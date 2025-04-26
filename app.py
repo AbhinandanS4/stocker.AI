@@ -9,6 +9,7 @@ import spacy
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import subprocess
 import time
 
 # Custom CSS for animations and styling
@@ -50,10 +51,11 @@ def load_models():
     try:
         nlp = spacy.load("en_core_web_sm")
     except OSError:
-        import subprocess
         subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
         nlp = spacy.load("en_core_web_sm")
-
+    
+    model = load_model("your_model.h5")  # Adjust path if needed
+    return model, nlp
 
 model, nlp = load_models()
 
