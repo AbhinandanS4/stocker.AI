@@ -5,11 +5,10 @@ from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import load_model
 import requests
 from bs4 import BeautifulSoup
-import spacy
+from sentence_transformers import SentenceTransformer
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import subprocess
 import time
 
 # Custom CSS for animations and styling
@@ -48,16 +47,11 @@ st.markdown('<p class="big-font">📈 Welcome to Stocker.AI 🚀</p>', unsafe_al
 # Load models
 @st.cache_resource
 def load_models():
-    try:
-        nlp = spacy.load("en_core_web_sm")
-    except OSError:
-        subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
-        nlp = spacy.load("en_core_web_sm")
-    
     model = load_model("your_model.h5")  # Adjust path if needed
-    return model, nlp
+    sentence_model = SentenceTransformer('all-MiniLM-L6-v2')  # Pre-trained Sentence Transformer model
+    return model, sentence_model
 
-model, nlp = load_models()
+model, sentence_model = load_models()
 
 # Prediction function
 def predict_stock(ticker, model, period):
@@ -106,13 +100,21 @@ def fetch_news():
             news_list.append((title_tag.text.strip(), link_tag['href']))
     return news_list
 
-# Investment suggestion function (simple)
-def suggest_investment(description, news_titles):
+# Investment suggestion function (using sentence transformers for better context matching)
+def suggest_investment(description, news_titles, sentence_model):
     positive_words = ["growth", "buy", "positive", "bullish", "rally"]
     negative_words = ["decline", "sell", "bearish", "plunge", "drop"]
+    
+    # Use Sentence Transformer to generate embeddings for news titles
+    news_embeddings = sentence_model.encode(news_titles, convert_to_tensor=True)
+    description_embedding = sentence_model.encode([description], convert_to_tensor=True)
 
-    positive_score = sum(word in str(news_titles).lower() for word in positive_words)
-    negative_score = sum(word in str(news_titles).lower() for word in negative_words)
+    # Compute cosine similarity between the description and each news title
+    from sklearn.metrics.pairwise import cosine_similarity
+    similarity_scores = cosine_similarity(description_embedding, news_embeddings)[0]
+
+    positive_score = sum(similarity_scores[i] for i, title in enumerate(news_titles) if any(word in title.lower() for word in positive_words))
+    negative_score = sum(similarity_scores[i] for i, title in enumerate(news_titles) if any(word in title.lower() for word in negative_words))
 
     if "upward" in description and positive_score >= negative_score:
         return "🚀 Positive trend ahead! A good opportunity to invest (but still DYOR)."
@@ -153,7 +155,7 @@ if st.button("Predict & Analyze 🚀"):
     # Investment Suggestion
     with st.expander("🧠 Investment Analysis"):
         trend_desc = "upward" if predictions[-1] > predictions[0] else "downward"
-        suggestion = suggest_investment(trend_desc, news)
+        suggestion = suggest_investment(trend_desc, [title for title, _ in news], sentence_model)
         st.info(suggestion)
 
 # Footer
