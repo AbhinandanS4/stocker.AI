@@ -47,7 +47,7 @@ st.markdown('<p class="big-font">📈 Welcome to Stocker.AI 🚀</p>', unsafe_al
 # Load models
 @st.cache_resource
 def load_models():
-    model = load_model("your_model.h5")  # Adjust path if needed
+    model = load_model("stock_prediction_model.h5")  # Adjust path if needed
     sentence_model = SentenceTransformer('all-MiniLM-L6-v2')  # Pre-trained Sentence Transformer model
     return model, sentence_model
 
