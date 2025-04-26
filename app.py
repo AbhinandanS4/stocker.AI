@@ -49,7 +49,7 @@ st.markdown('<p class="big-font">📈 Welcome to Stocker.AI 🚀</p>', unsafe_al
 def load_models():
     try:
         model = load_model('stock_prediction_model.h5')
-        nlp = spacy.load(("en_core_web_md"))
+        nlp = spacy.load(("en_core_web_sm"))
         return model, nlp
     except Exception as e:
         st.error(f"Error loading models: {e}")
