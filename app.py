@@ -47,9 +47,9 @@ st.markdown('<p class="big-font">📈 Welcome to Stocker.AI 🚀</p>', unsafe_al
 # Load models
 @st.cache_resource
 def load_models():
-   try:
+    try:
     nlp = spacy.load("en_core_web_md")
-except OSError:
+    except OSError:
     import subprocess
     subprocess.run(["python", "-m", "spacy", "download", "en_core_web_md"])
     nlp = spacy.load("en_core_web_md")
