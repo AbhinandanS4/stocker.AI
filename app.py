@@ -52,7 +52,7 @@ def load_models():
     except OSError:
         import subprocess
         subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
-        nlp = spacy.load("en_core_web_md")
+        nlp = spacy.load("en_core_web_sm")
 
 
 model, nlp = load_models()
