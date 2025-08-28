@@ -5,4 +5,4 @@ numpy
 pandas
 yfinance
 plotly
-beautifulsoup
+beautifulsoup4
