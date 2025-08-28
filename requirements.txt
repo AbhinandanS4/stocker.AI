@@ -6,6 +6,6 @@ tensorflow==2.15.0
 tf-keras
 requests
 beautifulsoup4
-sentence-transformers==4.36.2
+sentence-transformers==2.2.2
 plotly
 pandas
