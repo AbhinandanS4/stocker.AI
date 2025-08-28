@@ -8,7 +8,6 @@ from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import load_model
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from sentence_transformers import SentenceTransformer
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -50,14 +49,13 @@ st.markdown("""
 
 @st.cache_resource
 def load_models():
-    """Loads the Keras and Sentence Transformer models."""
+    """Loads the Keras prediction model."""
     try:
         prediction_model = load_model("stock_prediction_model.h5")
     except Exception as e:
         st.error(f"Error loading Keras model: {e}. Make sure the model file is present.")
-        return None, None
-    sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
-    return prediction_model, sentence_model
+        return None
+    return prediction_model
 
 @st.cache_data(ttl=600)
 def get_stock_data(ticker, period):
@@ -131,13 +129,13 @@ def fetch_news():
     except Exception:
         return []
 
-def generate_sentiment_analysis(description, rsi_value, news_titles, _sentence_model):
+def generate_sentiment_analysis(description, rsi_value, news_titles):
     """Provides an investment suggestion based on trend, RSI, and news."""
-    # (This function remains unchanged)
     positive_keywords = ["growth", "buy", "positive", "bullish", "rally", "profit", "up"]
     negative_keywords = ["decline", "sell", "bearish", "plunge", "drop", "loss", "down"]
     positive_score = sum(1 for title, _ in news_titles if any(word in title.lower() for word in positive_keywords))
     negative_score = sum(1 for title, _ in news_titles if any(word in title.lower() for word in negative_keywords))
+    
     if "upward" in description:
         if rsi_value < 70:
             return f"🚀 **Positive Outlook:** The model predicts an upward trend and the RSI ({rsi_value:.2f}) is not in the overbought zone. News sentiment appears neutral to positive. This could be a favorable setup, but always do your own research (DYOR)."
@@ -150,9 +148,8 @@ def generate_sentiment_analysis(description, rsi_value, news_titles, _sentence_m
              return f"⚖️ **Potential Reversal?** The trend is downward, but the RSI ({rsi_value:.2f}) suggests the stock is oversold, which could signal a potential bounce. High risk; monitor closely."
     return "⚖️ **Neutral Outlook:** The indicators are mixed. It's best to monitor the stock closely before making a decision."
 
-
 # --- Main Application ---
-prediction_model, sentence_model = load_models()
+prediction_model = load_models()
 if not prediction_model:
     st.stop()
 
@@ -184,7 +181,7 @@ else:
         # --- Create Tabs ---
         tab1, tab2, tab3, tab4 = st.tabs(["**Overview**", "**Technical Analysis**", "**AI Forecast**", "**News & Sentiment**"])
         
-        # (Tab 1: Overview - Unchanged)
+        # (Tab 1: Overview)
         with tab1:
             st.header(f"📍 Overview for {info.get('longName', st.session_state.ticker)}")
             cols = st.columns(4)
@@ -207,7 +204,7 @@ else:
             fig.update_yaxes(title_text="Price", row=1, col=1); fig.update_yaxes(title_text="Volume", row=2, col=1)
             st.plotly_chart(fig, use_container_width=True)
 
-        # (Tab 2: Technical Analysis - Unchanged)
+        # (Tab 2: Technical Analysis)
         with tab2:
             st.header("⚙️ Technical Indicators")
             st.subheader("Relative Strength Index (RSI)")
@@ -223,7 +220,7 @@ else:
             fig_macd.update_layout(title="MACD", template='plotly_dark')
             st.plotly_chart(fig_macd, use_container_width=True)
 
-        # --- Tab 3: AI Forecast ---
+        # (Tab 3: AI Forecast)
         with tab3:
             st.header("🔮 AI Price Forecast")
             with st.spinner("Running AI models..."):
@@ -233,34 +230,28 @@ else:
             st.subheader("3-Day Price Forecast")
             st.warning("Future forecasts are speculative and based on the model's iterative predictions. Use with caution.", icon="⚠️")
             
-            # Display metrics for the forecast
             forecast_cols = st.columns(3)
             future_dates = pd.bdate_range(start=data.index[-1] + pd.Timedelta(days=1), periods=3)
             for i, (date, price) in enumerate(zip(future_dates, future_forecast)):
                 with forecast_cols[i]:
                     st.metric(label=f"Day {i+1} ({date.strftime('%b %d')})", value=f"₹{price:.2f}")
 
-            # --- Combined Historical and Forecast Chart ---
-            st.subheader("Historical Fit & Future Forecast")
             fig_pred = go.Figure()
-            # Historical actual price
             fig_pred.add_trace(go.Scatter(x=data.index, y=data['Close'], name='Actual Price', line=dict(color='deepskyblue')))
-            # Historical predicted price
             pred_start_index = len(data) - len(hist_predictions)
             fig_pred.add_trace(go.Scatter(x=data.index[pred_start_index:], y=hist_predictions, name='Historical Prediction', line=dict(color='rgba(255, 127, 80, 0.7)', dash='dot')))
-            # Future forecast
             fig_pred.add_trace(go.Scatter(x=future_dates, y=future_forecast, name='3-Day Forecast', line=dict(color='yellow', width=4), mode='lines+markers', marker=dict(size=8)))
             fig_pred.update_layout(title="Model Performance and 3-Day Forecast", template='plotly_dark', legend_title="Legend")
             st.plotly_chart(fig_pred, use_container_width=True)
 
-        # (Tab 4: News & Sentiment - Unchanged)
+        # (Tab 4: News & Sentiment)
         with tab4:
             st.header("📰 News & Sentiment Analysis")
             news_list = fetch_news()
             st.subheader("Sentiment Analysis")
             trend_desc = "upward" if data['Close'][-1] > data['Close'][-30] else "downward"
             rsi_latest = data['RSI'].iloc[-1]
-            suggestion = generate_sentiment_analysis(trend_desc, rsi_latest, news_list, sentence_model)
+            suggestion = generate_sentiment_analysis(trend_desc, rsi_latest, news_list)
             st.info(suggestion)
             st.subheader("Latest Market News")
             if news_list:
