@@ -6,6 +6,6 @@ tensorflow
 tf-keras
 requests
 beautifulsoup4
-sentence-transformers
+sentence-transformers==4.36.2
 plotly
 pandas
