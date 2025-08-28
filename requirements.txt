@@ -3,6 +3,6 @@ tensorflow
 scikit-learn
 numpy
 pandas
-yfinance
+yfinance==0.2.58
 plotly
 beautifulsoup4
