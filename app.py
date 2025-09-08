@@ -438,4 +438,4 @@ with tab5:
 
 # Footer
 st.markdown("---")
-st.caption("🚀 Powered by Stocker.AI | Data from Yahoo Finance via yfinance | Built with Streamlit")
+st.caption("🚀 Powered by Stocker.AI | Data from Yahoo Finance via yfinance | Built with Streamlit")  
