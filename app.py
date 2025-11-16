@@ -738,30 +738,66 @@ if message:
 # ------------------------------------------------------------
 # JavaScript send-button handler
 # ------------------------------------------------------------
+# JavaScript send-button handler (robust: waits for elements, attaches handlers, clears input)
 if st.session_state.active_tab == 2:
-    js_logic = """
+    js_logic = r"""
     <script>
-        const btn = window.parent.document.getElementById("send-btn");
-        const input = window.parent.document.getElementById("chat-input");
-
-        function sendMsg() {
-            const msg = input.value.trim();
-            if (!msg) return;
-
-            const base = window.location.href.split("?")[0];
-            window.location.href = base + "?new_msg=" + encodeURIComponent(msg);
-        }
-
-        if (btn) btn.onclick = sendMsg;
-
-        if (input) {
-            input.addEventListener("keydown", function(e){
-                if (e.key === "Enter") sendMsg();
-            });
-        }
+    (function(){
+        // Poll until the parent DOM has the input and button elements
+        const MAX_TRIES = 100;         // avoid infinite loop
+        const INTERVAL_MS = 100;       // check every 100ms
+        let tries = 0;
+        const tryAttach = () => {
+            try {
+                const parentDoc = window.parent.document;
+                const btn = parentDoc.getElementById("send-btn");
+                const input = parentDoc.getElementById("chat-input");
+                if (btn && input) {
+                    // Attach click handler
+                    btn.onclick = function(e){
+                        e.preventDefault();
+                        const msg = input.value.trim();
+                        if (!msg) return;
+                        // Use replace to avoid history spam
+                        const base = window.location.href.split("?")[0];
+                        window.location.replace(base + "?new_msg=" + encodeURIComponent(msg));
+                        // clear input visually (helps UX while page reloads)
+                        input.value = "";
+                    };
+                    // Attach Enter key handler
+                    input.addEventListener("keydown", function(e){
+                        if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            btn.click();
+                        }
+                    });
+                    // Stop polling once done
+                    clearInterval(intervalId);
+                } else {
+                    tries++;
+                    if (tries > MAX_TRIES) {
+                        clearInterval(intervalId);
+                        // optional: console log if not found
+                        console.warn("Stocker.AI: chat input/button not found in parent DOM.");
+                    }
+                }
+            } catch(err) {
+                // Access to parent may throw in some environments briefly; keep trying
+                tries++;
+                if (tries > MAX_TRIES) {
+                    clearInterval(intervalId);
+                    console.warn("Stocker.AI: error accessing parent DOM:", err);
+                }
+            }
+        };
+        const intervalId = setInterval(tryAttach, INTERVAL_MS);
+        // run one immediate try
+        tryAttach();
+    })();
     </script>
     """
     st.components.v1.html(js_logic, height=0)
+
 
 
 # ------------------------------------------------------------
