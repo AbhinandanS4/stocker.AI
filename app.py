@@ -1,4 +1,3 @@
-# stocker_ai_final.py
 import streamlit as st
 import yfinance as yf
 import numpy as np
@@ -12,6 +11,7 @@ from plotly.subplots import make_subplots
 import json
 import time
 import html
+import streamlit.components.v1 as components
 
 # ---------------- Page config ----------------
 st.set_page_config(page_title="Stocker.AI - Advanced Analysis", page_icon="🔮", layout="wide")
@@ -31,8 +31,8 @@ st.markdown("""
 .tab-btn-active { background: #1f2937; color: #fff; padding:8px 12px; border-radius:8px; border: 1px solid rgba(255,255,255,0.04); box-shadow: 0 1px 6px rgba(0,0,0,0.35); }
 
 /* Chat area */
-.chat-shell { display:flex; flex-direction:column; height:470px; border-radius:10px; border:1px solid rgba(255,255,255,0.03); overflow:hidden; background: #071127; padding:8px; }
-.chat-history { flex:1 1 auto; overflow:auto; padding:8px; }
+.chat-shell { display:flex; flex-direction:column; height:480px; border-radius:10px; border:1px solid rgba(255,255,255,0.03); overflow:hidden; background: #071127; padding:8px; margin-top:12px; }
+.chat-history-frame { flex:1 1 auto; overflow:auto; padding:8px; }
 .chat-row { display:flex; width:100%; margin:8px 0; }
 .chat-bubble { padding:10px 14px; border-radius:12px; max-width:78%; line-height:1.4; font-size:0.95rem; }
 .chat-user { margin-left:auto; background: linear-gradient(180deg,#0ea5b1,#0284c7); color: white; border-bottom-right-radius: 4px; }
@@ -216,7 +216,6 @@ st.caption("Yahoo Finance data via yfinance • This is not investment advice")
 tab_labels = ["Overview", "Technical", "AI Forecast", "Signals", "News & Compare"]
 cols = st.columns(len(tab_labels))
 for i, label in enumerate(tab_labels):
-    # Active styling: set text/appearance by injecting raw HTML button via markdown inside column
     if i == st.session_state.active_tab:
         if cols[i].button(label, key=f"tab_{i}_btn"):
             st.session_state.active_tab = i
@@ -262,21 +261,68 @@ def show_overview():
     with cols[5]:
         st.markdown(f'<div class="metric-box"><div class="metric-label">52W Low</div><div class="metric-value">{inr_str(safe_num(info.get("yearLow")))}</div></div>', unsafe_allow_html=True)
 
-    if info.get("sector") or info.get("industry"):
-        st.caption(f"Sector: {info.get('sector','N/A')} • Industry: {info.get('industry','N/A')}")
+def get_chat_html():
+    """
+    Build chat HTML string (escaped content) and return it.
+    This function returns full HTML (no outer wrapper) for injection.
+    """
+    parts = []
+    for msg in st.session_state.chat_history:
+        role = msg.get("role", "assistant")
+        content = msg.get("content", "")
+        safe = html.escape(content).replace("\n", "<br>")
+        if role == "user":
+            parts.append(f'''
+            <div class="chat-row">
+              <div class="chat-bubble chat-user">
+                <div style="font-weight:600;margin-bottom:6px">You</div>
+                <div>{safe}</div>
+              </div>
+            </div>
+            ''')
+        elif role == "assistant":
+            parts.append(f'''
+            <div class="chat-row">
+              <div class="chat-bubble chat-bot">
+                <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                <div>{safe}</div>
+              </div>
+            </div>
+            ''')
+        else:
+            preview = (safe[:300] + "...") if len(safe) > 300 else safe
+            parts.append(f'<div class="small">System: {preview}</div>')
+    return "\n".join(parts)
 
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
-    fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name='Price'), row=1, col=1)
-    if ma_50: fig.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], name='SMA 50', line=dict(color='orange')), row=1, col=1)
-    if ma_200: fig.add_trace(go.Scatter(x=df.index, y=df['SMA_200'], name='SMA 200', line=dict(color='cyan')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df["BB_Upper"], name="BB Upper", line=dict(color="rgba(255,255,255,0.3)", dash="dot")), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df["BB_Lower"], name="BB Lower", line=dict(color="rgba(255,255,255,0.3)", dash="dot"), fill="tonexty", fillcolor="rgba(255,255,255,0.06)"), row=1, col=1)
-    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color='lightblue'), row=2, col=1)
-    fig.update_layout(title_text=f"{main_ticker} Price Chart", template='plotly_dark', xaxis_rangeslider_visible=False)
-    fig.update_yaxes(title_text="Price", row=1, col=1); fig.update_yaxes(title_text="Volume", row=2, col=1)
-    st.plotly_chart(fig, use_container_width=True)
+def render_chat_history_component():
+    """
+    Inject chat HTML into an isolated component and auto-scroll.
+    This avoids nested markdown wrappers and escaping.
+    """
+    chat_html = get_chat_html()
+    # create an isolated HTML widget that contains the chat history and auto-scroll script
+    injected = f"""
+    <div id="st-chat-history" class="chat-history-frame" style="height:360px; overflow:auto; padding:8px;">
+    {chat_html}
+    </div>
+    <script>
+    (function() {{
+        const el = document.getElementById("st-chat-history");
+        if(el) {{
+            el.scrollTop = el.scrollHeight;
+        }}
+    }})();
+    </script>
+    """
+    # components.html renders an iframe - that's fine and prevents Streamlit from escaping markup
+    components.html(injected, height=380, scrolling=True)
 
-def show_technical():
+# ---------------- Render selected tab ----------------
+if st.session_state.active_tab == 0:
+    show_overview()
+
+elif st.session_state.active_tab == 1:
+    # Technical
     st.header("⚙️ Technical Indicators")
     c1, c2 = st.columns(2)
     with c1:
@@ -304,65 +350,6 @@ def show_technical():
         st.plotly_chart(fig_vol, use_container_width=True)
     with r2:
         st.markdown(f'<div class="metric-box"><div class="metric-label">Regime</div><div class="metric-value">{regime_description(df)}</div></div>', unsafe_allow_html=True)
-
-# ---------------- Chat utilities ----------------
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
-def render_chat_history():
-    """
-    Render chat history into the fixed-height chat-history div.
-    We escape content to avoid HTML injection.
-    """
-    out = []
-    for msg in st.session_state.chat_history:
-        role = msg.get("role", "assistant")
-        content = msg.get("content", "")
-        safe_content = html.escape(content).replace("\n", "<br>")
-        if role == "user":
-            out.append(f"""
-            <div class="chat-row">
-              <div class="chat-bubble chat-user">
-                <div style="font-weight:600;margin-bottom:6px">You</div>
-                <div>{safe_content}</div>
-              </div>
-            </div>
-            """)
-        elif role == "assistant":
-            out.append(f"""
-            <div class="chat-row">
-              <div class="chat-bubble chat-bot">
-                <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                <div>{safe_content}</div>
-              </div>
-            </div>
-            """)
-        else:
-            # system message compact
-            preview = (safe_content[:300] + "...") if len(safe_content) > 300 else safe_content
-            out.append(f'<div class="small">System: {preview}</div>')
-    html_block = "\n".join(out)
-    # chat-history container has id "chat-history"
-    st.markdown(f'<div id="chat-history">{html_block}</div>', unsafe_allow_html=True)
-
-def scroll_chat_to_bottom():
-    # JS to scroll chat container to bottom
-    js = """
-    <script>
-    const el = window.parent.document.getElementById('chat-history');
-    if(el){
-        el.scrollTop = el.scrollHeight;
-    }
-    </script>
-    """
-    st.components.v1.html(js, height=0)
-
-# ---------------- Render selected tab ----------------
-if st.session_state.active_tab == 0:
-    show_overview()
-
-elif st.session_state.active_tab == 1:
-    show_technical()
 
 elif st.session_state.active_tab == 2:
     # ---------------- AI Forecast ----------------
@@ -412,155 +399,139 @@ elif st.session_state.active_tab == 2:
         fig_pred.update_layout(title="Model Performance and Forecast", template='plotly_dark', legend_title="Legend")
         st.plotly_chart(fig_pred, use_container_width=True)
 
-    # ---------------- Chat UI (bottom-fixed input, history above) ----------------
-# ---------------- Chat UI (bottom-fixed input, history above) ----------------
+    # ---------------- Chat UI ----------------
     st.subheader("💬 Ask Stocker.AI")
-    
-    # Chat shell container
+
+    # Chat shell (single authoritative renderer)
     st.markdown('<div class="chat-shell">', unsafe_allow_html=True)
-    
-    # Chat history area
-    st.markdown('<div class="chat-history" id="chat-history">', unsafe_allow_html=True)
-    render_chat_history()
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Clear chat button (MUST be above form)
-    if st.button("Clear chat"):
+
+    # Render chat history via components (avoids nested markdown problems)
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    render_chat_history_component()
+
+    # Clear chat (outside the form)
+    if st.button("Clear chat", key="clear_chat"):
         st.session_state.chat_history = []
         st.session_state.last_sent = ""
-        render_chat_history()
-        scroll_chat_to_bottom()
-    
-    # Chat input form
+        render_chat_history_component()
+
+    # Input form (clears on submit)
     with st.form(key="chat_form", clear_on_submit=True):
-        user_input = st.text_input(
-            "Ask something about the stock, forecast, or market...",
-            key="chat_input_field"
-        )
+        user_input = st.text_input("Ask something about the stock, forecast, or market...", key="chat_input_field")
         send = st.form_submit_button("Send")
-    
-        # Handle send INSIDE THE FORM (prevents duplicates)
-        if send and user_input.strip():
+
+        if send and user_input and user_input.strip():
+            # stay in AI Forecast tab
             st.session_state.active_tab = 2
-    
-            # Initialize no-duplicate marker
+
+            # last_sent guard
             if "last_sent" not in st.session_state:
                 st.session_state.last_sent = ""
-    
-            # Prevent duplicate sends
             if st.session_state.last_sent == user_input.strip():
-                scroll_chat_to_bottom()
-            else:
-                st.session_state.last_sent = user_input.strip()
-    
-                # Build system context
-                system_prompt = (
-                    f"You are Stocker.AI — an assistant that explains stock market data, "
-                    f"technical indicators, price movements, volatility, and AI model forecasts. "
-                    f"You must avoid giving financial advice. "
-                    f"Current Ticker: {main_ticker}. "
-                    f"Latest Close: {df['Close'].iloc[-1]:.2f}. "
-                    f"RSI(14): {df['RSI'].iloc[-1]:.2f}. "
-                    f"Regime: {regime_description(df)}."
-                )
-    
-                # Ensure system message exists only once
-                if not st.session_state.chat_history or st.session_state.chat_history[0]["role"] != "system":
-                    st.session_state.chat_history.insert(0, {"role": "system", "content": system_prompt})
-                else:
-                    st.session_state.chat_history[0]["content"] = system_prompt
-    
-                # Append user message
-                st.session_state.chat_history.append({"role": "user", "content": user_input})
-    
-                render_chat_history()
-                scroll_chat_to_bottom()
-    
-                # --- GROQ STREAMING ---
-                api_key = st.secrets.get("GROQ_API_KEY")
-                if not api_key:
-                    st.error("Missing GROQ_API_KEY in Streamlit secrets.")
-                else:
-                    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-                    payload = {
-                        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-                        "messages": st.session_state.chat_history,
-                        "stream": True
-                    }
-    
-                    placeholder = st.empty()
-                    full_reply = ""
-    
-                    try:
-                        with requests.post(
-                            "https://api.groq.com/openai/v1/chat/completions",
-                            json=payload, headers=headers, stream=True, timeout=60
-                        ) as resp:
-    
-                            if resp.status_code != 200:
-                                try:
-                                    err = resp.json()
-                                except:
-                                    err = resp.text
-                                st.error(f"Groq API Error {resp.status_code}: {err}")
-    
-                            else:
-                                for line in resp.iter_lines(decode_unicode=True):
-                                    if not line or not line.startswith("data:"):
-                                        continue
-    
-                                    data = line[5:].strip()
-                                    if data == "[DONE]":
-                                        break
-    
-                                    try:
-                                        j = json.loads(data)
-                                        token = j["choices"][0]["delta"].get("content", "")
-                                    except:
-                                        token = ""
-    
-                                    if token:
-                                        full_reply += token
-                                        placeholder.markdown(
-                                            f"""
-                                            <div class="chat-row">
-                                                <div class="chat-bubble chat-bot">
-                                                    <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                                                    <div>{html.escape(full_reply).replace("\n", "<br>")}▌</div>
-                                                </div>
-                                            </div>
-                                            """,
-                                            unsafe_allow_html=True
-                                        )
-                                        scroll_chat_to_bottom()
-                                        time.sleep(0.02)
-    
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-    
-                    # Final message
-                    safe_final = html.escape(full_reply).replace("\n", "<br>")
-                    placeholder.markdown(
-                        f"""
-                        <div class="chat-row">
-                            <div class="chat-bubble chat-bot">
-                                <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                                <div>{safe_final}</div>
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-    
-                    # Append once
-                    st.session_state.chat_history.append({"role": "assistant", "content": full_reply})
-    
-                    render_chat_history()
-                    scroll_chat_to_bottom()
-    
-    # Close chat shell
-    st.markdown('</div>', unsafe_allow_html=True)
+                # duplicate, skip
+                render_chat_history_component()
+                st.experimental_rerun()
+            st.session_state.last_sent = user_input.strip()
 
+            # system prompt (inject or refresh)
+            system_prompt = (
+                f"You are Stocker.AI — an assistant that explains stock market data, "
+                f"technical indicators, price movements, volatility, and AI model forecasts. "
+                f"You must avoid giving financial advice. "
+                f"Current Ticker: {main_ticker}. "
+                f"Latest Close: {df['Close'].iloc[-1]:.2f}. "
+                f"RSI(14): {df['RSI'].iloc[-1]:.2f}. "
+                f"Regime: {regime_description(df)}."
+            )
+            if not st.session_state.chat_history or st.session_state.chat_history[0].get("role") != "system":
+                st.session_state.chat_history.insert(0, {"role": "system", "content": system_prompt})
+            else:
+                st.session_state.chat_history[0]["content"] = system_prompt
+
+            # append user message
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
+            render_chat_history_component()
+
+            # ---------- GROQ streaming ----------
+            api_key = st.secrets.get("GROQ_API_KEY")
+            if not api_key:
+                st.error("Missing GROQ_API_KEY in Streamlit secrets.")
+            else:
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                    "messages": st.session_state.chat_history,
+                    "stream": True
+                }
+
+                # placeholder for typing (below the chat area)
+                placeholder = st.empty()
+                full_reply = ""
+
+                try:
+                    with requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, stream=True, timeout=120) as resp:
+                        if resp.status_code != 200:
+                            try:
+                                err = resp.json()
+                            except Exception:
+                                err = resp.text
+                            st.error(f"Groq API returned {resp.status_code}: {err}")
+                        else:
+                            for raw in resp.iter_lines(decode_unicode=True):
+                                if not raw or not raw.startswith("data:"):
+                                    continue
+                                data = raw[5:].strip()
+                                if data == "[DONE]":
+                                    break
+                                try:
+                                    j = json.loads(data)
+                                    choices = j.get("choices") or []
+                                    token = ""
+                                    if choices:
+                                        delta = choices[0].get("delta", {}) or {}
+                                        token = delta.get("content", "") or ""
+                                        if token == "":
+                                            # sometimes the message block is sent
+                                            token = choices[0].get("message", {}).get("content", "") or ""
+                                except Exception:
+                                    token = data
+
+                                if token:
+                                    full_reply += token
+                                    # show typing in placeholder
+                                    safe_partial = html.escape(full_reply).replace("\n", "<br>")
+                                    placeholder.markdown(f'''
+                                    <div class="chat-row">
+                                      <div class="chat-bubble chat-bot typing">
+                                        <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                                        <div>{safe_partial}▌</div>
+                                      </div>
+                                    </div>
+                                    ''', unsafe_allow_html=True)
+                                    # keep chat history rendered and scroll
+                                    render_chat_history_component()
+                                    time.sleep(0.02)
+
+                            # finalize
+                            placeholder.empty()
+                except requests.exceptions.RequestException as e:
+                    st.error(f"Groq API request failed: {e}")
+
+                # Append final assistant reply (if not duplicate)
+                last_assistant = None
+                for m in reversed(st.session_state.chat_history):
+                    if m.get("role") == "assistant":
+                        last_assistant = m.get("content")
+                        break
+                if last_assistant != full_reply:
+                    st.session_state.chat_history.append({"role": "assistant", "content": full_reply})
+
+                # final re-render
+                render_chat_history_component()
+
+    # close chat shell
+    st.markdown('</div>', unsafe_allow_html=True)
 
 elif st.session_state.active_tab == 3:
     # Signals
