@@ -3,55 +3,149 @@ import yfinance as yf
 import numpy as np
 import pandas as pd
 import requests
+import json
+import html
+import time
 from bs4 import BeautifulSoup
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import load_model
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import json
-import time
-import html
-import streamlit.components.v1 as components
 
-# ---------------- Page config ----------------
-st.set_page_config(page_title="Stocker.AI - Advanced Analysis", page_icon="🔮", layout="wide")
+# ------------------------------------------------------------
+# Page config
+# ------------------------------------------------------------
+st.set_page_config(
+    page_title="Stocker.AI - Advanced Analysis",
+    page_icon="🔮",
+    layout="wide"
+)
 
-# ---------------- Styles ----------------
+# ------------------------------------------------------------
+# Global CSS Styles (Discord-style chat, modern input bar)
+# ------------------------------------------------------------
 st.markdown("""
 <style>
-/* General */
-.big-title { font-size: 2.0rem; font-weight: 800; color: #7cc7ff; margin-bottom: 0.25rem; }
-.metric-box { border: 1px solid #2a7fff33; border-radius: 12px; padding: 10px; text-align: center; background: #0f1420; }
-.metric-label { font-size: 0.78em; color: #c6d0e0; }
-.metric-value { font-size: 1.18em; font-weight: 700; color: #e8f0ff; }
+
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Title */
+.big-title {
+    font-size: 2.1rem;
+    font-weight: 800;
+    color: #7cc7ff;
+    margin-bottom: 0.3rem;
+}
+
+/* Metric Boxes */
+.metric-box {
+    border: 1px solid rgba(122,162,247,0.22);
+    background: var(--background-color, #0f1420);
+    border-radius: 12px;
+    padding: 10px;
+    text-align: center;
+}
+.metric-label {
+    font-size: 0.78em;
+    color: #c6d0e0;
+}
+.metric-value {
+    font-size: 1.18em;
+    font-weight: 700;
+    color: #e8f0ff;
+}
 
 /* Tab buttons */
-.tab-row { display:flex; gap:8px; margin-bottom: 12px; }
-.tab-btn { background: transparent; color: #cbd5e1; padding:8px 12px; border-radius:8px; border: 1px solid transparent; cursor: pointer; }
-.tab-btn-active { background: #1f2937; color: #fff; padding:8px 12px; border-radius:8px; border: 1px solid rgba(255,255,255,0.04); box-shadow: 0 1px 6px rgba(0,0,0,0.35); }
+.tab-row { display:flex; gap:8px; margin-bottom: 15px; }
+.tab-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.04);
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #cbd5e1;
+}
+.tab-btn-active {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: white;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+}
 
-/* Chat area */
-.chat-shell { display:flex; flex-direction:column; height:480px; border-radius:10px; border:1px solid rgba(255,255,255,0.03); overflow:hidden; background: #071127; padding:8px; margin-top:12px; }
-.chat-history-frame { flex:1 1 auto; overflow:auto; padding:8px; }
-.chat-row { display:flex; width:100%; margin:8px 0; }
-.chat-bubble { padding:10px 14px; border-radius:12px; max-width:78%; line-height:1.4; font-size:0.95rem; }
-.chat-user { margin-left:auto; background: linear-gradient(180deg,#0ea5b1,#0284c7); color: white; border-bottom-right-radius: 4px; }
-.chat-bot { margin-right:auto; background: linear-gradient(180deg,#111827,#0f1724); color: #e6eef8; border-bottom-left-radius: 4px; border: 1px solid rgba(255,255,255,0.03); }
-.chat-meta { font-size:0.78rem; color:#9fb3c8; margin-top:6px; }
-.chat-input-row { display:flex; gap:8px; margin-top:8px; }
-.chat-input { flex:1; }
-.btn-send { padding:8px 14px; border-radius:8px; background:#2b6ef6; color:white; border:none; cursor:pointer; }
+/* Chat container (collapsible inside forecast tab) */
+.chat-panel {
+    width: 100%;
+    background: rgba(12,17,28,0.65);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: 14px;
+}
 
-/* Minor */
-.small { font-size:0.82rem; color:#9fb3c8; margin-top:6px; }
+.chat-history {
+    height: 420px;
+    overflow-y: auto;
+    padding: 8px;
+    scroll-behavior: smooth;
+}
+
+/* Discord-style bubbles */
+.message-block {
+    width: 100%;
+    margin: 10px 0;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px;
+    color: #e8ecf2;
+}
+.message-username {
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #7cc7ff;
+}
+
+/* Input bar */
+.input-bar-wrapper {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.input-bar {
+    flex: 1;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    padding: 10px 14px;
+    border-radius: 10px;
+    color: white;
+    outline: none;
+}
+
+.send-btn {
+    background: #2b6ef6;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 18px;
+    color: white;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- Helpers ----------------
+# ------------------------------------------------------------
+# Helper Functions
+# ------------------------------------------------------------
 def safe_num(x, default=np.nan):
     try:
         return float(x)
-    except Exception:
+    except:
         return default
 
 def inr_str(x):
@@ -59,16 +153,22 @@ def inr_str(x):
         return "N/A"
     return f"₹{x:,.2f}"
 
-def normalize_nse(ticker: str) -> str:
-    return ticker.strip().upper()
+def normalize_ticker(t):
+    return t.strip().upper()
 
-@st.cache_data(ttl=600, show_spinner=False)
+# ------------------------------------------------------------
+# Cached Yahoo Finance Data
+# ------------------------------------------------------------
+@st.cache_data(ttl=600)
 def get_stock_data(ticker, period):
     t = yf.Ticker(ticker)
     data = t.history(period=period, auto_adjust=True)
-    if data is None or data.empty:
+    if data.empty:
         return None, {}
+
     info = {}
+
+    # fast_info
     try:
         fi = t.fast_info or {}
         info.update({
@@ -78,525 +178,594 @@ def get_stock_data(ticker, period):
             "yearLow": fi.get("year_low"),
             "marketCap": fi.get("market_cap")
         })
-    except Exception:
+    except:
         pass
+
+    # info
     try:
         inf = t.info or {}
-        for k in ["longName", "trailingPE", "trailingEps", "dividendYield", "longBusinessSummary", "sector", "industry"]:
+        for k in ["longName", "trailingPE", "trailingEps", "dividendYield",
+                  "longBusinessSummary", "sector", "industry"]:
             if k in inf:
-                info[k] = inf.get(k, None)
-        if not info.get("marketCap") and "marketCap" in inf:
-            info["marketCap"] = inf.get("marketCap")
-    except Exception:
+                info[k] = inf.get(k)
+    except:
         pass
+
     return data, info
 
-def compute_indicators(data: pd.DataFrame):
-    df = data.copy()
-    df["SMA_50"] = df["Close"].rolling(50).mean()
+# ------------------------------------------------------------
+# Indicators
+# ------------------------------------------------------------
+def compute_indicators(df):
+    df = df.copy()
+
+    df["SMA_50"]  = df["Close"].rolling(50).mean()
     df["SMA_200"] = df["Close"].rolling(200).mean()
+
     delta = df["Close"].diff()
-    gain = delta.clip(lower=0).rolling(14).mean()
-    loss = (-delta.clip(upper=0)).rolling(14).mean()
-    rs = gain / loss.replace(0, np.nan)
-    df["RSI"] = 100 - (100 / (1 + rs))
+    gain  = delta.clip(lower=0).rolling(14).mean()
+    loss  = (-delta.clip(upper=0)).rolling(14).mean()
+    rs    = gain / loss.replace(0, np.nan)
+    df["RSI"] = 100 - (100/(1+rs))
+
     exp1 = df["Close"].ewm(span=12, adjust=False).mean()
     exp2 = df["Close"].ewm(span=26, adjust=False).mean()
     df["MACD"] = exp1 - exp2
     df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
+
     df["ATR"] = (df["High"] - df["Low"]).rolling(14).mean()
+
     df["BB_Mid"] = df["Close"].rolling(20).mean()
     df["BB_Std"] = df["Close"].rolling(20).std()
     df["BB_Upper"] = df["BB_Mid"] + 2*df["BB_Std"]
     df["BB_Lower"] = df["BB_Mid"] - 2*df["BB_Std"]
-    tr = np.maximum(df["High"]-df["Low"], np.maximum((df["High"]-df["Close"].shift()).abs(), (df["Low"]-df["Close"].shift()).abs()))
-    plus_dm = (df["High"]-df["High"].shift()).clip(lower=0)
-    minus_dm = (df["Low"].shift()-df["Low"]).clip(lower=0)
-    tr_n = tr.rolling(14).sum()
-    plus_di = 100 * (plus_dm.rolling(14).sum() / tr_n.replace(0, np.nan))
-    minus_di = 100 * (minus_dm.rolling(14).sum() / tr_n.replace(0, np.nan))
-    dx = ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)) * 100
-    df["ADX"] = dx.rolling(14).mean()
+
     return df
 
 def regime_description(df):
-    parts = []
     if len(df) < 200:
         return "Insufficient data"
-    parts.append("Uptrend (SMA50>SMA200)" if df["SMA_50"].iloc[-1] > df["SMA_200"].iloc[-1] else "Downtrend (SMA50<SMA200)")
-    parts.append("Trending (ADX≥25)" if df["ADX"].iloc[-1] >= 25 else "Range-bound (ADX<25)")
-    return ", ".join(parts)
+    trend = "Uptrend" if df["SMA_50"].iloc[-1] > df["SMA_200"].iloc[-1] else "Downtrend"
+    vol   = "Trending" if df["ATR"].iloc[-1] > df["ATR"].mean() else "Range-bound"
+    return f"{trend}, {vol}"
 
+# ------------------------------------------------------------
+# Load AI Model for Forecast
+# ------------------------------------------------------------
 @st.cache_resource
-def load_models():
+def load_forecast_model():
     try:
-        model = load_model("stock_prediction_model.h5")
-    except Exception as e:
-        st.warning(f"AI model not loaded: {e}")
+        return load_model("stock_prediction_model.h5")
+    except:
         return None
-    return model
 
-def predict_historical_prices(_model, data):
+# ------------------------------------------------------------
+# Forecast functions
+# ------------------------------------------------------------
+def predict_history(model, df):
     scaler = MinMaxScaler(feature_range=(0,1))
-    scaled_data = scaler.fit_transform(data['Close'].values.reshape(-1,1))
-    window_size = 60
-    if len(scaled_data) < window_size + 1:
+    scaled = scaler.fit_transform(df["Close"].values.reshape(-1,1))
+    ws = 60
+    if len(scaled) < ws:
         return np.array([]), scaler
-    X_test = [scaled_data[i-window_size:i, 0] for i in range(window_size, len(scaled_data))]
-    X_test = np.array(X_test)
-    X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
-    preds = _model.predict(X_test, verbose=0)
+
+    X = []
+    for i in range(ws, len(scaled)):
+        X.append(scaled[i-ws:i,0])
+    X = np.array(X).reshape(-1, ws, 1)
+
+    preds = model.predict(X, verbose=0)
     preds = scaler.inverse_transform(preds)
     return preds.flatten(), scaler
 
-def forecast_future_prices(_model, data, scaler, n_days=3):
-    window_size = 60
-    if len(data) < window_size + 1:
+def forecast_future(model, df, scaler, days):
+    ws = 60
+    if len(df) < ws:
         return np.array([])
-    last_60_days = data['Close'].values[-window_size:]
-    scaled_last_60_days = scaler.transform(last_60_days.reshape(-1, 1))
-    future_predictions = []
-    current_batch = scaled_last_60_days.reshape(1, window_size, 1)
-    for _ in range(n_days):
-        next_pred = _model.predict(current_batch, verbose=0)[0]
-        future_predictions.append(next_pred)
-        current_batch = np.append(current_batch[:, 1:, :], [[next_pred]], axis=1)
-    future_predictions = scaler.inverse_transform(np.array(future_predictions))
-    return future_predictions.flatten()
 
+    last = df["Close"].values[-ws:]
+    scaled = scaler.transform(last.reshape(-1,1))
+    batch = scaled.reshape(1, ws, 1)
+
+    results = []
+    for _ in range(days):
+        nxt = model.predict(batch, verbose=0)[0]
+        results.append(nxt)
+        batch = np.append(batch[:,1:,:], [[nxt]], axis=1)
+
+    return scaler.inverse_transform(np.array(results)).flatten()
+
+# ------------------------------------------------------------
+# Fetch News
+# ------------------------------------------------------------
 @st.cache_data(ttl=1800)
 def fetch_news():
     url = "https://www.moneycontrol.com/news/business/stocks/"
     try:
-        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        articles = soup.find_all('li', class_="clearfix", limit=10)
-        return [(a.find('h2').text.strip(), a.find('a')['href']) for a in articles if a.find('h2') and a.find('a')]
-    except Exception:
+        r = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=10)
+        soup = BeautifulSoup(r.text, "html.parser")
+        items = soup.find_all("li", class_="clearfix", limit=10)
+        return [(i.find("h2").text.strip(), i.find("a")["href"])
+                for i in items if i.find("h2") and i.find("a")]
+    except:
         return []
 
-def generate_sentiment_analysis(description, rsi_value, news_titles):
-    positive_keywords = ["growth", "buy", "positive", "bullish", "rally", "profit", "up"]
-    negative_keywords = ["decline", "sell", "bearish", "plunge", "drop", "loss", "down"]
-    positive_score = sum(1 for title, _ in news_titles if any(word in title.lower() for word in positive_keywords))
-    negative_score = sum(1 for title, _ in news_titles if any(word in title.lower() for word in negative_keywords))
-    if "upward" in description:
-        if rsi_value < 70:
-            return f"🚀 Positive Outlook: Upward trend with RSI {rsi_value:.2f}; not overbought. News skew neutral/positive. Consider risk controls."
-        else:
-            return f"⚠️ Mixed Signals: Upward trend but RSI {rsi_value:.2f} near overbought. Pullback risk elevated."
-    elif "downward" in description:
-        if rsi_value > 30:
-            return f"📉 Negative Outlook: Downward trend; RSI {rsi_value:.2f} has room to fall. Sentiment weak; caution."
-        else:
-            return f"⚖️ Potential Reversal: Downward trend but RSI {rsi_value:.2f} oversold—watch for bounce; high risk."
-    return "⚖️ Neutral Outlook: Mixed signals. Monitor price action and volume."
-
-# ---------------- Sidebar controls ----------------
+# ------------------------------------------------------------
+# Sidebar Controls
+# ------------------------------------------------------------
 st.sidebar.header("⚙️ Controls")
-ticker = st.sidebar.text_input("Enter Stock Ticker", "RELIANCE.NS").upper()
-period = st.sidebar.selectbox("Select Time Period", ["6mo", "1y", "2y", "5y", "max"])
-ma_50 = st.sidebar.checkbox("Show 50-Day MA", value=True)
-ma_200 = st.sidebar.checkbox("Show 200-Day MA", value=False)
-compare = st.sidebar.text_input("Compare (comma-separated tickers)", "").strip()
+
+ticker_input = st.sidebar.text_input("Stock Ticker", "RELIANCE.NS")
+period = st.sidebar.selectbox("Period", ["6mo","1y","2y","5y","max"])
+ma50 = st.sidebar.checkbox("50-day MA", True)
+ma200 = st.sidebar.checkbox("200-day MA", False)
+compare = st.sidebar.text_input("Compare With", "")
 forecast_days = st.sidebar.slider("Forecast Days", 1, 7, 3)
-analyze_pressed = st.sidebar.button("Analyze & Forecast 🚀", key="analyze_btn")
+run_forecast = st.sidebar.button("Analyze & Forecast 🚀")
 
-# ---------------- Active tab memory ----------------
+# Track active tab state
 if "active_tab" not in st.session_state:
-    st.session_state.active_tab = 2 if analyze_pressed else 0
-
-if analyze_pressed:
+    st.session_state.active_tab = 2 if run_forecast else 0
+if run_forecast:
     st.session_state.active_tab = 2
 
-# ---------------- Header + custom tab bar ----------------
+# Title
 st.markdown('<div class="big-title">Stocker.AI 🔮</div>', unsafe_allow_html=True)
-st.caption("Yahoo Finance data via yfinance • This is not investment advice")
+st.caption("Enhanced forecasting • Not financial advice")
 
-tab_labels = ["Overview", "Technical", "AI Forecast", "Signals", "News & Compare"]
-cols = st.columns(len(tab_labels))
-for i, label in enumerate(tab_labels):
+
+# ------------------------------------------------------------
+# Fetch stock data
+# ------------------------------------------------------------
+main_ticker = normalize_ticker(ticker_input)
+with st.spinner("Fetching market data..."):
+    df_raw, info = get_stock_data(main_ticker, period)
+
+if df_raw is None:
+    st.error("Invalid ticker or no data available.")
+    st.stop()
+
+df = compute_indicators(df_raw)
+model = load_forecast_model()
+
+# ------------------------------------------------------------
+# Tab Bar (manual controls)
+# ------------------------------------------------------------
+tab_names = ["Overview", "Technical", "AI Forecast", "Signals", "News & Compare"]
+cols = st.columns(len(tab_names))
+
+for i, label in enumerate(tab_names):
     if i == st.session_state.active_tab:
-        if cols[i].button(label, key=f"tab_{i}_btn"):
+        if cols[i].button(label, key=f"tab_{i}_active"):
             st.session_state.active_tab = i
     else:
-        if cols[i].button(label, key=f"tab_{i}_btn"):
+        if cols[i].button(label, key=f"tab_{i}"):
             st.session_state.active_tab = i
 
-# stop early when appropriate
-if st.session_state.active_tab == 0 and not analyze_pressed:
-    st.info("Select a ticker and click Analyze & Forecast to begin.")
-    st.stop()
-
-# ---------------- Main data & models ----------------
-prediction_model = load_models()
-main_ticker = normalize_nse(ticker)
-
-with st.spinner("Loading market data..."):
-    data, info = get_stock_data(main_ticker, period)
-
-if data is None:
-    st.error(f"Could not retrieve data for '{main_ticker}'. Please check the symbol or try another period.")
-    st.stop()
-
-df = compute_indicators(data)
-
-# ---------------- Utility: render plots (same as before) ----------------
+# ------------------------------------------------------------
+# Helper render functions for Overview + Technical
+# ------------------------------------------------------------
 def show_overview():
-    st.header(f"📍 Overview for {info.get('longName', main_ticker)}")
-    cols = st.columns(6)
-    last_close = df["Close"].iloc[-1]
-    daily_chg = df["Close"].pct_change().iloc[-1]
-    with cols[0]:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">Last Close</div><div class="metric-value">{inr_str(last_close)}</div></div>', unsafe_allow_html=True)
-    with cols[1]:
-        chg_class = "ok" if daily_chg > 0 else "bad"
-        st.markdown(f'<div class="metric-box"><div class="metric-label">Daily Change</div><div class="metric-value {chg_class}">{daily_chg*100:.2f}%</div></div>', unsafe_allow_html=True)
-    with cols[2]:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">RSI(14)</div><div class="metric-value">{safe_num(df["RSI"].iloc[-1]):.1f}</div></div>', unsafe_allow_html=True)
-    with cols[3]:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">ATR(14)</div><div class="metric-value">{safe_num(df["ATR"].iloc[-1]):.2f}</div></div>', unsafe_allow_html=True)
-    with cols[4]:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">52W High</div><div class="metric-value">{inr_str(safe_num(info.get("yearHigh")))}</div></div>', unsafe_allow_html=True)
-    with cols[5]:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">52W Low</div><div class="metric-value">{inr_str(safe_num(info.get("yearLow")))}</div></div>', unsafe_allow_html=True)
+    st.header(f"📍 Overview: {info.get('longName', main_ticker)}")
 
-def get_chat_html():
-    """
-    Build chat HTML string (escaped content) and return it.
-    This function returns full HTML (no outer wrapper) for injection.
-    """
-    parts = []
-    for msg in st.session_state.chat_history:
-        role = msg.get("role", "assistant")
-        content = msg.get("content", "")
-        safe = html.escape(content).replace("\n", "<br>")
-        if role == "user":
-            parts.append(f'''
-            <div class="chat-row">
-              <div class="chat-bubble chat-user">
-                <div style="font-weight:600;margin-bottom:6px">You</div>
-                <div>{safe}</div>
-              </div>
-            </div>
-            ''')
-        elif role == "assistant":
-            parts.append(f'''
-            <div class="chat-row">
-              <div class="chat-bubble chat-bot">
-                <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                <div>{safe}</div>
-              </div>
-            </div>
-            ''')
-        else:
-            preview = (safe[:300] + "...") if len(safe) > 300 else safe
-            parts.append(f'<div class="small">System: {preview}</div>')
-    return "\n".join(parts)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    last = df["Close"].iloc[-1]
+    chg = df["Close"].pct_change().iloc[-1]
 
-def render_chat_history_component():
-    """
-    Inject chat HTML into an isolated component and auto-scroll.
-    This avoids nested markdown wrappers and escaping.
-    """
-    chat_html = get_chat_html()
-    # create an isolated HTML widget that contains the chat history and auto-scroll script
-    injected = f"""
-    <div id="st-chat-history" class="chat-history-frame" style="height:360px; overflow:auto; padding:8px;">
-    {chat_html}
-    </div>
-    <script>
-    (function() {{
-        const el = document.getElementById("st-chat-history");
-        if(el) {{
-            el.scrollTop = el.scrollHeight;
-        }}
-    }})();
-    </script>
-    """
-    # components.html renders an iframe - that's fine and prevents Streamlit from escaping markup
-    components.html(injected, height=380, scrolling=True)
-
-# ---------------- Render selected tab ----------------
-if st.session_state.active_tab == 0:
-    show_overview()
-
-elif st.session_state.active_tab == 1:
-    # Technical
-    st.header("⚙️ Technical Indicators")
-    c1, c2 = st.columns(2)
     with c1:
-        st.subheader("RSI")
-        st.caption("70+ overbought, 30- oversold")
-        fig_rsi = go.Figure()
-        fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI'))
-        fig_rsi.add_hline(y=70, line_dash="dash", line_color="red"); fig_rsi.add_hline(y=30, line_dash="dash", line_color="green")
-        fig_rsi.update_layout(template='plotly_dark', height=280)
-        st.plotly_chart(fig_rsi, use_container_width=True)
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-label">Last Close</div>
+            <div class="metric-value">{inr_str(last)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
     with c2:
+        color = "ok" if chg>0 else "bad"
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-label">Daily Change</div>
+            <div class="metric-value" style="color:{'#22c55e' if chg>0 else '#ef4444'}">
+                {chg*100:.2f}%
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c3:
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-label">RSI(14)</div>
+            <div class="metric-value">{df['RSI'].iloc[-1]:.1f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c4:
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-label">ATR(14)</div>
+            <div class="metric-value">{df['ATR'].iloc[-1]:.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c5:
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-label">52W High</div>
+            <div class="metric-value">{inr_str(info.get("yearHigh"))}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c6:
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-label">52W Low</div>
+            <div class="metric-value">{inr_str(info.get("yearLow"))}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.caption(f"Sector: {info.get('sector','N/A')} • Industry: {info.get('industry','N/A')}")
+
+    # Price chart
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.04,
+                        row_heights=[0.7, 0.3])
+
+    fig.add_trace(
+        go.Candlestick(
+            x=df.index, open=df["Open"], high=df["High"],
+            low=df["Low"], close=df["Close"], name="Price"
+        ), row=1, col=1
+    )
+    if ma50:
+        fig.add_trace(go.Scatter(x=df.index, y=df["SMA_50"], name="SMA 50",
+                                 line=dict(color="orange")), row=1, col=1)
+    if ma200:
+        fig.add_trace(go.Scatter(x=df.index, y=df["SMA_200"], name="SMA 200",
+                                 line=dict(color="cyan")), row=1, col=1)
+
+    fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume",
+                         marker_color="lightskyblue"), row=2, col=1)
+
+    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False,
+                      height=550, title=f"{main_ticker} – Price Chart")
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def show_technical():
+    st.header("⚙️ Technical Indicators")
+
+    left, right = st.columns(2)
+
+    with left:
+        st.subheader("RSI")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI"))
+        fig.add_hline(y=70, line_dash="dot", line_color="red")
+        fig.add_hline(y=30, line_dash="dot", line_color="green")
+        fig.update_layout(template="plotly_dark", height=300)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with right:
         st.subheader("MACD")
-        st.caption("Crosses may indicate momentum shifts")
-        fig_macd = go.Figure()
-        fig_macd.add_trace(go.Scatter(x=df.index, y=df['MACD'], name='MACD', line=dict(color='deepskyblue')))
-        fig_macd.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], name='Signal', line=dict(color='orange')))
-        fig_macd.update_layout(template='plotly_dark', height=280)
-        st.plotly_chart(fig_macd, use_container_width=True)
-    st.subheader("Volatility & Regime")
-    r1, r2 = st.columns(2)
-    with r1:
-        fig_vol = go.Figure()
-        fig_vol.add_trace(go.Scatter(x=df.index, y=df["ATR"], name="ATR(14)", line=dict(color="#9cdcfe")))
-        fig_vol.update_layout(template="plotly_dark", height=260)
-        st.plotly_chart(fig_vol, use_container_width=True)
-    with r2:
-        st.markdown(f'<div class="metric-box"><div class="metric-label">Regime</div><div class="metric-value">{regime_description(df)}</div></div>', unsafe_allow_html=True)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df.index, y=df["MACD"], name="MACD"))
+        fig.add_trace(go.Scatter(x=df.index, y=df["MACD_Signal"], name="Signal"))
+        fig.update_layout(template="plotly_dark", height=300)
+        st.plotly_chart(fig, use_container_width=True)
 
-elif st.session_state.active_tab == 2:
-    # ---------------- AI Forecast ----------------
-    st.header("🔮 AI Price Forecast")
+    # Regime
+    st.subheader("Regime")
+    st.info(regime_description(df))
 
-    if not prediction_model:
-        st.warning("Model file (stock_prediction_model.h5) not found or failed to load.")
+
+# ------------------------------------------------------------
+# AI Forecast Tab (Graphs + Collapsible Chat Panel)
+# ------------------------------------------------------------
+if st.session_state.active_tab == 2:
+
+    st.header("🔮 AI Forecast")
+
+    if not model:
+        st.error("AI model file missing: stock_prediction_model.h5")
     else:
-        with st.spinner("Running AI models..."):
-            hist_predictions, scaler = predict_historical_prices(prediction_model, df)
-            future_forecast = forecast_future_prices(prediction_model, df, scaler, n_days=forecast_days)
+        with st.spinner("Generating forecast..."):
+            hist_pred, scaler = predict_history(model, df)
+            future = forecast_future(model, df, scaler, forecast_days)
 
-        st.warning("Forecasts are speculative and based on iterative predictions. Consider recent volatility and model drift.", icon="⚠️")
+        st.caption("⚠ Forecasts are approximate and for educational use only.")
 
-        band = np.nan
-        if len(hist_predictions) > 20:
-            true = df["Close"].iloc[-len(hist_predictions):].values
-            n = min(len(true), len(hist_predictions))
-            resid = true[-n:] - hist_predictions[-n:]
-            if len(resid):
-                band = float(np.nanstd(resid))
+        # Forecast metrics
+        dates = pd.bdate_range(start=df.index[-1] + pd.Timedelta(days=1),
+                               periods=forecast_days)
+        cols = st.columns(forecast_days)
 
-        if future_forecast.size:
-            fc_cols = st.columns(min(5, forecast_days))
-            future_dates = pd.bdate_range(start=df.index[-1] + pd.Timedelta(days=1), periods=forecast_days)
-            for i, (date, price) in enumerate(zip(future_dates, future_forecast)):
-                band_txt = f" ±{band:.2f}" if band == band else ""
-                if i < len(fc_cols):
-                    with fc_cols[i]:
-                        st.metric(label=f"Day {i+1} ({date.strftime('%b %d')})", value=f"₹{price:.2f}{band_txt}")
+        for i, (d, p) in enumerate(zip(dates, future)):
+            with cols[i]:
+                st.metric(f"Day {i+1} ({d.strftime('%b %d')})", f"₹{p:.2f}")
 
-        fig_pred = go.Figure()
-        fig_pred.add_trace(go.Scatter(x=df.index, y=df['Close'], name='Actual Price', line=dict(color='deepskyblue')))
-        if len(hist_predictions):
-            pred_start_index = len(df) - len(hist_predictions)
-            hx = df.index[pred_start_index:]
-            fig_pred.add_trace(go.Scatter(x=hx, y=hist_predictions, name='Historical Prediction', line=dict(color='rgba(255, 127, 80, 0.8)', dash='dot')))
-            if band == band:
-                fig_pred.add_trace(go.Scatter(x=hx, y=hist_predictions+2*band, name='Fit +2σ', line=dict(color='rgba(255,127,80,0.3)', dash='dot')))
-                fig_pred.add_trace(go.Scatter(x=hx, y=hist_predictions-2*band, name='Fit -2σ', line=dict(color='rgba(255,127,80,0.3)', dash='dot'), fill="tonexty", fillcolor="rgba(255,127,80,0.12)"))
-        if future_forecast.size:
-            fdates = pd.bdate_range(start=df.index[-1] + pd.Timedelta(days=1), periods=forecast_days)
-            fig_pred.add_trace(go.Scatter(x=fdates, y=future_forecast, name=f'{forecast_days}-Day Forecast', line=dict(color='yellow', width=4), mode='lines+markers', marker=dict(size=8)))
-            if band == band:
-                fig_pred.add_trace(go.Scatter(x=fdates, y=future_forecast+2*band, name='Forecast +2σ', line=dict(color='rgba(255,255,0,0.3)', dash='dot')))
-                fig_pred.add_trace(go.Scatter(x=fdates, y=future_forecast-2*band, name='Forecast -2σ', line=dict(color='rgba(255,255,0,0.3)', dash='dot'), fill="tonexty", fillcolor="rgba(255,255,0,0.12)"))
-        fig_pred.update_layout(title="Model Performance and Forecast", template='plotly_dark', legend_title="Legend")
-        st.plotly_chart(fig_pred, use_container_width=True)
+        # Forecast plot
+        figf = go.Figure()
+        figf.add_trace(
+            go.Scatter(x=df.index, y=df["Close"], name="Actual",
+                       line=dict(color="deepskyblue"))
+        )
 
-    # ---------------- Chat UI ----------------
-    st.subheader("💬 Ask Stocker.AI")
-
-    # Chat shell (single authoritative renderer)
-    st.markdown('<div class="chat-shell">', unsafe_allow_html=True)
-
-    # Render chat history via components (avoids nested markdown problems)
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
-    render_chat_history_component()
-
-    # Clear chat (outside the form)
-    if st.button("Clear chat", key="clear_chat"):
-        st.session_state.chat_history = []
-        st.session_state.last_sent = ""
-        render_chat_history_component()
-
-    # Input form (clears on submit)
-    with st.form(key="chat_form", clear_on_submit=True):
-        user_input = st.text_input("Ask something about the stock, forecast, or market...", key="chat_input_field")
-        send = st.form_submit_button("Send")
-
-        if send and user_input and user_input.strip():
-            # stay in AI Forecast tab
-            st.session_state.active_tab = 2
-
-            # last_sent guard
-            if "last_sent" not in st.session_state:
-                st.session_state.last_sent = ""
-            if st.session_state.last_sent == user_input.strip():
-                # duplicate, skip
-                render_chat_history_component()
-                st.experimental_rerun()
-            st.session_state.last_sent = user_input.strip()
-
-            # system prompt (inject or refresh)
-            system_prompt = (
-                f"You are Stocker.AI — an assistant that explains stock market data, "
-                f"technical indicators, price movements, volatility, and AI model forecasts. "
-                f"You must avoid giving financial advice. "
-                f"Current Ticker: {main_ticker}. "
-                f"Latest Close: {df['Close'].iloc[-1]:.2f}. "
-                f"RSI(14): {df['RSI'].iloc[-1]:.2f}. "
-                f"Regime: {regime_description(df)}."
+        if len(hist_pred):
+            idx = df.index[-len(hist_pred):]
+            figf.add_trace(
+                go.Scatter(x=idx, y=hist_pred, name="Model Fit",
+                           line=dict(color="orange", dash="dot"))
             )
-            if not st.session_state.chat_history or st.session_state.chat_history[0].get("role") != "system":
-                st.session_state.chat_history.insert(0, {"role": "system", "content": system_prompt})
-            else:
-                st.session_state.chat_history[0]["content"] = system_prompt
 
-            # append user message
-            st.session_state.chat_history.append({"role": "user", "content": user_input})
-            render_chat_history_component()
+        figf.add_trace(
+            go.Scatter(x=dates, y=future, name="Forecast",
+                       line=dict(color="yellow"), mode="lines+markers")
+        )
 
-            # ---------- GROQ streaming ----------
-            api_key = st.secrets.get("GROQ_API_KEY")
-            if not api_key:
-                st.error("Missing GROQ_API_KEY in Streamlit secrets.")
-            else:
-                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-                payload = {
-                    "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-                    "messages": st.session_state.chat_history,
-                    "stream": True
-                }
+        figf.update_layout(template="plotly_dark", height=520,
+                           title="Model Forecast")
+        st.plotly_chart(figf, use_container_width=True)
 
-                # placeholder for typing (below the chat area)
-                placeholder = st.empty()
-                full_reply = ""
+    # --------------------------------------------------------
+    # COLLAPSIBLE CHATBOT PANEL (F3)
+    # --------------------------------------------------------
+    with st.expander("💬 Ask Stocker.AI", expanded=False):
 
-                try:
-                    with requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, stream=True, timeout=120) as resp:
-                        if resp.status_code != 200:
-                            try:
-                                err = resp.json()
-                            except Exception:
-                                err = resp.text
-                            st.error(f"Groq API returned {resp.status_code}: {err}")
-                        else:
-                            for raw in resp.iter_lines(decode_unicode=True):
-                                if not raw or not raw.startswith("data:"):
-                                    continue
-                                data = raw[5:].strip()
-                                if data == "[DONE]":
-                                    break
-                                try:
-                                    j = json.loads(data)
-                                    choices = j.get("choices") or []
-                                    token = ""
-                                    if choices:
-                                        delta = choices[0].get("delta", {}) or {}
-                                        token = delta.get("content", "") or ""
-                                        if token == "":
-                                            # sometimes the message block is sent
-                                            token = choices[0].get("message", {}).get("content", "") or ""
-                                except Exception:
-                                    token = data
+        # Chat wrapper
+        st.markdown('<div class="chat-panel">', unsafe_allow_html=True)
 
-                                if token:
-                                    full_reply += token
-                                    # show typing in placeholder
-                                    safe_partial = html.escape(full_reply).replace("\n", "<br>")
-                                    placeholder.markdown(f'''
-                                    <div class="chat-row">
-                                      <div class="chat-bubble chat-bot typing">
-                                        <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                                        <div>{safe_partial}▌</div>
-                                      </div>
-                                    </div>
-                                    ''', unsafe_allow_html=True)
-                                    # keep chat history rendered and scroll
-                                    render_chat_history_component()
-                                    time.sleep(0.02)
+        # Chat history container (empty; we fill via JS)
+        st.markdown("""
+            <div id="chat-history" class="chat-history"></div>
+        """, unsafe_allow_html=True)
 
-                            # finalize
-                            placeholder.empty()
-                except requests.exceptions.RequestException as e:
-                    st.error(f"Groq API request failed: {e}")
+        # Input bar (no form)
+        st.markdown("""
+            <div class="input-bar-wrapper">
+                <input id="chat-input" class="input-bar" placeholder="Ask something about the stock...">
+                <button id="send-btn" class="send-btn">➤</button>
+            </div>
+        """, unsafe_allow_html=True)
 
-                # Append final assistant reply (if not duplicate)
-                last_assistant = None
-                for m in reversed(st.session_state.chat_history):
-                    if m.get("role") == "assistant":
-                        last_assistant = m.get("content")
-                        break
-                if last_assistant != full_reply:
-                    st.session_state.chat_history.append({"role": "assistant", "content": full_reply})
+        st.markdown("</div>", unsafe_allow_html=True)
 
-                # final re-render
-                render_chat_history_component()
+# ------------------------------------------------------------
+# Signals Tab
+# ------------------------------------------------------------
+if st.session_state.active_tab == 3:
+    st.header("📈 Simple Signals & Strategy")
 
-    # close chat shell
-    st.markdown('</div>', unsafe_allow_html=True)
-
-elif st.session_state.active_tab == 3:
-    # Signals
-    st.header("📈 Simple Signals & Stats")
     s = df.copy()
-    s["Signal"] = 0
-    s.loc[(s["MACD"] > s["MACD_Signal"]) & (s["MACD"].shift(1) <= s["MACD_Signal"].shift(1)), "Signal"] = 1
+    s["Signal"] = (s["MACD"] > s["MACD_Signal"]).astype(int)
     s["Position"] = s["Signal"].replace(0, np.nan).ffill().fillna(0)
     s["Return"] = s["Close"].pct_change()
     s["Strat"] = s["Position"].shift(1) * s["Return"]
     equity = (1 + s["Strat"].fillna(0)).cumprod()
-    peak = equity.cummax()
-    dd = (equity/peak - 1)
-    sharpe_like = (np.sqrt(252) * s["Strat"].mean() / (s["Strat"].std() + 1e-9)) if s["Strat"].std() else 0.0
-    c1, c2, c3, c4 = st.columns(4)
-    if len(s) > 252:
-        cagr = (equity.iloc[-1])**(252/len(s)) - 1
-    else:
-        cagr = equity.iloc[-1] - 1
-    c1.metric("CAGR", f"{cagr*100:,.2f}%")
-    c2.metric("Max Drawdown", f"{dd.min()*100:,.2f}%")
-    c3.metric("Sharpe-like", f"{sharpe_like:.2f}")
-    c4.metric("Win Rate", f"{(s['Strat']>0).mean()*100:,.1f}%")
-    fig_eq = go.Figure()
-    fig_eq.add_trace(go.Scatter(x=s.index, y=equity, name="Equity", line=dict(color="#34d399")))
-    fig_eq.update_layout(template="plotly_dark", height=300, title="Strategy Equity (MACD cross long-only)")
-    st.plotly_chart(fig_eq, use_container_width=True)
 
-elif st.session_state.active_tab == 4:
-    # News & Compare
-    st.header("📰 News & Compare")
-    news_list = fetch_news()
-    st.subheader("Sentiment Snapshot")
-    trend_desc = "upward" if df['Close'][-1] > df['Close'][-30] else "downward" if len(df) > 30 else "neutral"
-    rsi_latest = df['RSI'].iloc[-1]
-    suggestion = generate_sentiment_analysis(trend_desc, rsi_latest, news_list)
-    st.info(suggestion)
-    st.subheader("Latest Market News")
-    if news_list:
-        for title, link in news_list:
+    st.metric("Sharpe-like", (np.sqrt(252)*s["Strat"].mean()/(s["Strat"].std()+1e-9)))
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=s.index, y=equity,
+                             line=dict(color="#34d399"), name="Equity"))
+    fig.update_layout(template="plotly_dark", height=400,
+                      title="MACD Strategy Equity")
+    st.plotly_chart(fig, use_container_width=True)
+
+# ------------------------------------------------------------
+# News & Compare Tab
+# ------------------------------------------------------------
+if st.session_state.active_tab == 4:
+    st.header("📰 News & Comparison")
+
+    news = fetch_news()
+    if news:
+        for title, link in news:
             st.markdown(f"- [{title}]({link})")
     else:
-        st.warning("Could not fetch latest news.")
-    if compare:
-        comp_list = [normalize_nse(x.strip()) for x in compare.split(",") if x.strip()]
-        if comp_list:
-            st.subheader("Compare Close (Normalized)")
-            frame = {}
-            for tkr in comp_list[:6]:
-                try:
-                    d2 = yf.Ticker(tkr).history(period=period, auto_adjust=True)
-                    if d2 is not None and not d2.empty:
-                        ser = d2["Close"]
-                        ser = ser / ser.iloc[0]
-                        frame[tkr] = ser
-                except Exception:
-                    pass
-            if frame:
-                cmp_df = pd.DataFrame(frame).dropna(how="all")
-                fig_cmp = go.Figure()
-                for col in cmp_df.columns:
-                    fig_cmp.add_trace(go.Scatter(x=cmp_df.index, y=cmp_df[col], name=col))
-                fig_cmp.update_layout(template='plotly_dark', height=380, title="Normalized Performance")
-                st.plotly_chart(fig_cmp, use_container_width=True)
+        st.warning("No news available.")
 
-# ---------------- Footer ----------------
+    if compare:
+        tickers = [normalize_ticker(x) for x in compare.split(",")]
+        frame = {}
+        for t in tickers:
+            try:
+                d2 = yf.Ticker(t).history(period=period, auto_adjust=True)
+                if not d2.empty:
+                    frame[t] = d2["Close"] / d2["Close"].iloc[0]
+            except:
+                pass
+
+        if frame:
+            cmp_df = pd.DataFrame(frame)
+            fig = go.Figure()
+            for col in cmp_df.columns:
+                fig.add_trace(go.Scatter(x=cmp_df.index, y=cmp_df[col], name=col))
+            fig.update_layout(template="plotly_dark", height=420,
+                              title="Normalized Comparison")
+            st.plotly_chart(fig, use_container_width=True)
+
+# ------------------------------------------------------------
+# Chat State
+# ------------------------------------------------------------
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+if "last_user_msg" not in st.session_state:
+    st.session_state.last_user_msg = None
+
+# ------------------------------------------------------------
+# Render chat history as HTML (returned, not printed)
+# ------------------------------------------------------------
+def build_chat_html():
+    html_blocks = []
+
+    for msg in st.session_state.chat_history:
+        role = msg["role"]
+        content = html.escape(msg["content"]).replace("\n", "<br>")
+
+        username = "Stocker.AI" if role == "assistant" else "You"
+        html_blocks.append(f"""
+        <div class="message-block">
+            <div class="message-username">{username}</div>
+            <div class="message-content">{content}</div>
+        </div>
+        """)
+
+    return "".join(html_blocks)
+
+
+# ------------------------------------------------------------
+# Inject chat history into browser DOM
+# ------------------------------------------------------------
+def push_chat_to_browser():
+    chat_html = build_chat_html().replace("`", "\\`")
+
+    js = f"""
+    <script>
+        const box = window.parent.document.getElementById("chat-history");
+        if (box) {{
+            box.innerHTML = `{chat_html}`;
+            box.scrollTop = box.scrollHeight;
+        }}
+    </script>
+    """
+    st.components.v1.html(js, height=0)
+
+
+# Push history on page load (if forecast tab active)
+if st.session_state.active_tab == 2:
+    push_chat_to_browser()
+
+
+# ------------------------------------------------------------
+# Python → Groq streaming function
+# ------------------------------------------------------------
+def stream_from_groq():
+    api_key = st.secrets.get("GROQ_API_KEY")
+    if not api_key:
+        return "Groq API key missing."
+
+    payload = {
+        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+        "messages": st.session_state.chat_history,
+        "stream": True
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    reply = ""
+    try:
+        with requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            json=payload, headers=headers, stream=True, timeout=60
+        ) as resp:
+
+            if resp.status_code != 200:
+                try:
+                    return f"Groq error: {resp.json()}"
+                except:
+                    return f"Groq error: {resp.text}"
+
+            for raw in resp.iter_lines(decode_unicode=True):
+                if not raw or not raw.startswith("data:"):
+                    continue
+                data = raw[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    j = json.loads(data)
+                    token = j["choices"][0].get("delta", {}).get("content", "")
+                except:
+                    token = data
+
+                if token:
+                    reply += token
+
+        return reply
+
+    except Exception as e:
+        return f"Groq request failed: {e}"
+
+
+# ------------------------------------------------------------
+# System Prompt (always at index 0)
+# ------------------------------------------------------------
+def ensure_system_prompt():
+    prompt = (
+        f"You are Stocker.AI, a financial analysis assistant. "
+        f"You explain indicators, price action, volatility, and forecasts. "
+        f"You DO NOT give trading advice. "
+        f"Ticker: {main_ticker}. Latest Close: {df['Close'].iloc[-1]:.2f}. "
+        f"RSI: {df['RSI'].iloc[-1]:.2f}. Regime: {regime_description(df)}."
+    )
+
+    if not st.session_state.chat_history:
+        st.session_state.chat_history.append({"role": "system", "content": prompt})
+    else:
+        st.session_state.chat_history[0] = {"role": "system", "content": prompt}
+
+
+# ------------------------------------------------------------
+# Handle incoming JS → Python message
+# ------------------------------------------------------------
+message = st.experimental_get_query_params().get("new_msg", None)
+if message:
+    message = message[0]
+
+    # Prevent duplicates on rerun
+    if message != st.session_state.last_user_msg:
+
+        ensure_system_prompt()
+
+        st.session_state.chat_history.append({"role": "user", "content": message})
+        st.session_state.last_user_msg = message
+
+        push_chat_to_browser()
+
+        # Call Groq
+        assistant_reply = stream_from_groq()
+
+        st.session_state.chat_history.append(
+            {"role": "assistant", "content": assistant_reply}
+        )
+
+        push_chat_to_browser()
+
+    # Remove URL param to avoid repeat event
+    st.experimental_set_query_params()
+
+
+# ------------------------------------------------------------
+# JavaScript send-button handler
+# ------------------------------------------------------------
+if st.session_state.active_tab == 2:
+    js_logic = """
+    <script>
+        const btn = window.parent.document.getElementById("send-btn");
+        const input = window.parent.document.getElementById("chat-input");
+
+        function sendMsg() {
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            const base = window.location.href.split("?")[0];
+            window.location.href = base + "?new_msg=" + encodeURIComponent(msg);
+        }
+
+        if (btn) btn.onclick = sendMsg;
+
+        if (input) {
+            input.addEventListener("keydown", function(e){
+                if (e.key === "Enter") sendMsg();
+            });
+        }
+    </script>
+    """
+    st.components.v1.html(js_logic, height=0)
+
+
+# ------------------------------------------------------------
+# Footer
+# ------------------------------------------------------------
 st.markdown("---")
-st.caption("🚀 Powered by Stocker.AI | Data from Yahoo Finance via yfinance | Built with Streamlit")
+st.caption("🚀 Powered by Stocker.AI • Built with Streamlit & Groq • Yahoo Finance data")
