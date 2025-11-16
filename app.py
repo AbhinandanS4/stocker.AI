@@ -403,82 +403,133 @@ if st.session_state.active_tab == 2:
    # render_chat()
 
     # send handling (Groq SSE style)
-    if send_pressed and user_input.strip():
-        st.session_state.active_tab = 2
-        st.session_state.chat_history.append({"role": "user", "content": user_input})
-        render_chat()
+    # ---------------- Handle sending message ----------------
+if send_pressed and user_input.strip():
 
-        api_key = st.secrets.get("GROQ_API_KEY", None)
-        if not api_key:
-            st.error("GROQ API key missing in st.secrets['GROQ_API_KEY']")
-        else:
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            payload = {
-                "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-                "messages": st.session_state.chat_history,
-                "stream": True
-            }
+    # Always stay on AI Forecast tab
+    st.session_state.active_tab = 2
 
-            placeholder = st.empty()
-            full_reply = ""
+    # -------- AUTO-INJECT CONTEXT (DEFAULT MODE) --------
+    system_prompt = (
+        f"You are Stocker.AI — an assistant that explains stock market data, "
+        f"technical indicators, price movements, volatility, and AI model forecasts. "
+        f"You must avoid giving financial advice and instead focus on explanations. "
+        f"Current Ticker: {main_ticker}. "
+        f"Latest Close: {df['Close'].iloc[-1]:.2f}. "
+        f"RSI(14): {df['RSI'].iloc[-1]:.2f}. "
+        f"Regime: {regime_description(df)}. "
+        f"Use clear, simple language and avoid buy/sell recommendations."
+    )
 
-            try:
-                with requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, stream=True, timeout=60) as resp:
-                    if resp.status_code != 200:
-                        try:
-                            err = resp.json()
-                        except Exception:
-                            err = resp.text
-                        st.error(f"Groq API returned {resp.status_code}: {err}")
-                    else:
-                        for raw in resp.iter_lines(decode_unicode=True):
-                            if raw is None or raw == "":
-                                continue
-                            line = raw.strip()
-                            if line.startswith("data:"):
-                                data = line[len("data:"):].strip()
-                                if data == "[DONE]":
-                                    break
-                                try:
-                                    j = json.loads(data)
-                                    choices = j.get("choices") or []
-                                    token = ""
-                                    if choices:
-                                        delta = choices[0].get("delta", {}) or {}
-                                        token = delta.get("content", "") or ""
-                                        if token == "":
-                                            # sometimes full message provided
-                                            msg_block = choices[0].get("message") or {}
-                                            token = msg_block.get("content", "") or ""
-                                except Exception:
-                                    token = data
+    # If system prompt missing, add it. If present, refresh it.
+    if len(st.session_state.chat_history) == 0:
+        st.session_state.chat_history.append({"role": "system", "content": system_prompt})
+    elif st.session_state.chat_history[0].get("role") == "system":
+        st.session_state.chat_history[0]["content"] = system_prompt
+    else:
+        st.session_state.chat_history.insert(0, {"role": "system", "content": system_prompt})
 
-                                if token:
-                                    full_reply += token
-                                    placeholder.markdown(f'''
-                                        <div class="chat-row">
-                                          <div class="chat-bubble chat-bot typing">
-                                            <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                                            <div>{full_reply}▌</div>
-                                          </div>
-                                        </div>
-                                    ''', unsafe_allow_html=True)
-                                    time.sleep(0.02)
+    # ------------------------------------------------------
 
-                        # finalize
-                        placeholder.markdown(f'''
-                            <div class="chat-row">
-                              <div class="chat-bubble chat-bot">
-                                <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                                <div>{full_reply}</div>
-                              </div>
-                            </div>
-                        ''', unsafe_allow_html=True)
-                        st.session_state.chat_history.append({"role": "assistant", "content": full_reply})
-            except requests.exceptions.RequestException as e:
-                st.error(f"Groq API request failed: {e}")
+    # Add user message to history
+    st.session_state.chat_history.append({
+        "role": "user",
+        "content": user_input
+    })
 
+    # Show chat so user's bubble appears
     render_chat()
+
+    # Prepare Groq API call
+    api_key = st.secrets.get("GROQ_API_KEY", None)
+    if not api_key:
+        st.error("Missing GROQ_API_KEY in Streamlit secrets.")
+    else:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+            "messages": st.session_state.chat_history,
+            "stream": True
+        }
+
+        # Placeholder for streaming reply
+        placeholder = st.empty()
+        full_reply = ""
+
+        try:
+            with requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json=payload,
+                headers=headers,
+                stream=True,
+                timeout=60
+            ) as resp:
+
+                if resp.status_code != 200:
+                    try:
+                        err = resp.json()
+                    except:
+                        err = resp.text
+                    st.error(f"Groq API Error {resp.status_code}: {err}")
+                else:
+                    # Stream message tokens
+                    for line in resp.iter_lines(decode_unicode=True):
+                        if not line:
+                            continue
+
+                        if line.startswith("data:"):
+                            data = line[5:].strip()
+
+                            if data == "[DONE]":
+                                break
+
+                            # Parse SSE JSON line
+                            try:
+                                j = json.loads(data)
+                                delta = j["choices"][0]["delta"]
+                                token = delta.get("content", "")
+                            except:
+                                token = ""
+
+                            # Accumulate & update UI
+                            if token:
+                                full_reply += token
+                                placeholder.markdown(f"""
+                                <div class="chat-row">
+                                  <div class="chat-bubble chat-bot typing">
+                                    <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                                    <div>{full_reply}▌</div>
+                                  </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                time.sleep(0.02)
+
+                    # Final bubble
+                    placeholder.markdown(f"""
+                    <div class="chat-row">
+                      <div class="chat-bubble chat-bot">
+                        <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                        <div>{full_reply}</div>
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # Append assistant reply to history
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": full_reply
+                    })
+
+        except Exception as e:
+            st.error(f"Groq streaming error: {e}")
+
+    # Final clean chat render (no duplicates)
+    render_chat()
+
 
 # ---------- Signals (index 3) ----------
 if st.session_state.active_tab == 3:
