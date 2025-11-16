@@ -425,17 +425,14 @@ elif st.session_state.active_tab == 2:
 
     # Input area remains under the chat history (fixed visually by CSS layout)
     # Use a form-like approach to avoid double-trigger issues
+    if st.button("Clear chat", key="clear_chat_btn"):
+    st.session_state.chat_history = []
+    render_chat_history()
+    scroll_chat_to_bottom()
     with st.form(key="chat_form", clear_on_submit=False):
         user_input = st.text_input("Ask something about the stock, forecast, or market...", key="chat_input_field")
         send = st.form_submit_button("Send")
 
-        # Clear chat button outside form to avoid re-runs interfering
-        if st.button("Clear chat", key="clear_chat_btn"):
-            st.session_state.chat_history = []
-            # re-render history
-            render_chat_history()
-            # scroll
-            scroll_chat_to_bottom()
 
         # When user submits via form_submit_button
         if send and user_input and user_input.strip():
