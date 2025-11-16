@@ -413,7 +413,7 @@ elif st.session_state.active_tab == 2:
         st.plotly_chart(fig_pred, use_container_width=True)
 
     # ---------------- Chat UI (bottom-fixed input, history above) ----------------
-    st.subheader("💬 Ask Stocker.AI (chat input fixed at bottom)")
+    st.subheader("💬 Ask Stocker.AI")
 
     # Chat shell: history (scrollable) + input area
     # We make a container for the chat shell so it visually groups elements together
