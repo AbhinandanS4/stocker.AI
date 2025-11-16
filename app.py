@@ -434,89 +434,98 @@ with tab3:
     # show existing history
     render_chat()
 
-    # handle sending
-    if send_pressed and user_input.strip():
-        # ensure we remain on AI Forecast tab
-        st.session_state.active_tab = 2
+   # handle sending
+if send_pressed and user_input.strip():
+    # stay on AI Forecast tab
+    st.session_state.active_tab = 2
 
-        # append user's message
-        st.session_state.chat_history.append({"role": "user", "content": user_input})
-        render_chat()
+    # append user's message
+    st.session_state.chat_history.append({"role": "user", "content": user_input})
+    render_chat()
 
-        api_key = st.secrets.get("GROK_API_KEY", None)
-        if not api_key:
-            st.error("GROK API key not found in st.secrets['GROK_API_KEY']. Add it to Streamlit secrets.")
-        else:
-            headers = {"Authorization": f"Bearer {api_key}", "Accept": "text/event-stream", "Content-Type": "application/json"}
-            payload = {
-                "model": "grok-beta",
-                "messages": st.session_state.chat_history,
-                "stream": True
-            }
+    api_key = st.secrets.get("GROQ_API_KEY", None)
+    if not api_key:
+        st.error("GROQ API key missing in st.secrets['GROQ_API_KEY']")
+    else:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
 
-            placeholder = st.empty()
-            full_reply = ""
+        payload = {
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+            "messages": st.session_state.chat_history,
+            "stream": True
+        }
 
-            try:
-                # streaming request
-                with requests.post("https://api.x.ai/v1/chat/completions", json=payload, headers=headers, stream=True, timeout=60) as resp:
-                    if resp.status_code != 200:
-                        try:
-                            err = resp.json()
-                        except Exception:
-                            err = resp.text
-                        st.error(f"Grok API returned {resp.status_code}: {err}")
-                    else:
-                        for raw in resp.iter_lines(decode_unicode=True):
-                            if raw is None or raw == "":
-                                continue
-                            line = raw.strip()
-                            if line.startswith("data:"):
-                                line = line[len("data:"):].strip()
-                            if not line:
-                                continue
-                            if line in ("[DONE]", "--end--"):
+        placeholder = st.empty()
+        full_reply = ""
+
+        try:
+            with requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json=payload,
+                headers=headers,
+                stream=True,
+                timeout=60
+            ) as resp:
+
+                if resp.status_code != 200:
+                    try:
+                        err = resp.json()
+                    except:
+                        err = resp.text
+                    st.error(f"Groq API Error {resp.status_code}: {err}")
+                else:
+                    # Process streaming tokens (OpenAI/Groq SSE format)
+                    for line in resp.iter_lines(decode_unicode=True):
+                        if not line:
+                            continue
+
+                        if line.startswith("data:"):
+                            data = line[len("data:"):].strip()
+                            if data == "[DONE]":
                                 break
-                            token = None
+
                             try:
-                                j = json.loads(line)
-                                choices = j.get("choices") or []
-                                if choices:
-                                    delta = choices[0].get("delta") or {}
-                                    token = delta.get("content")
-                                    if token is None:
-                                        msg_block = choices[0].get("message") or {}
-                                        token = msg_block.get("content")
-                                if token is None and "message" in j:
-                                    token = j["message"].get("content")
-                            except Exception:
-                                # fallback: use raw text
-                                token = line
+                                j = json.loads(data)
+                                token = j["choices"][0]["delta"].get("content", "")
+                            except:
+                                token = ""
 
                             if token:
                                 full_reply += token
-                                placeholder.markdown(f'''
+                                placeholder.markdown(f"""
                                     <div class="chat-row">
                                       <div class="chat-bubble chat-bot typing">
                                         <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
                                         <div>{full_reply}▌</div>
                                       </div>
                                     </div>
-                                ''', unsafe_allow_html=True)
-                                time.sleep(0.03)  # make typing visible
+                                """, unsafe_allow_html=True)
 
-                        # finalize and append to history
-                        placeholder.markdown(f'''
-                            <div class="chat-row">
-                              <div class="chat-bubble chat-bot">
-                                <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                                <div>{full_reply}</div>
-                              </div>
-                            </div>
-                        ''', unsafe_allow_html=True)
-                        st.session_state.chat_history.append({"role": "assistant", "content": full_reply})
-            except requests.exceptions.RequestException as e:
-                st.error(f"Grok API request failed: {e}")
+                                time.sleep(0.02)
+
+                    # Final message
+                    placeholder.markdown(f"""
+                        <div class="chat-row">
+                          <div class="chat-bubble chat-bot">
+                            <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                            <div>{full_reply}</div>
+                          </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": full_reply
+                    })
+
+        except Exception as e:
+            st.error(f"Groq request failed: {e}")
+
+    # Render final chat history
+    render_chat()
 
     # final render so history appears after streaming completes
     render_chat()
