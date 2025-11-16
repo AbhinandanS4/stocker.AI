@@ -400,7 +400,7 @@ if st.session_state.active_tab == 2:
                 st.markdown(f'<div class="small">System: {content[:300]}{"..." if len(content)>300 else ""}</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    render_chat()
+   # render_chat()
 
     # send handling (Groq SSE style)
     if send_pressed and user_input.strip():
