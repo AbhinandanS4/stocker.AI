@@ -215,10 +215,15 @@ run = st.sidebar.button("Analyze & Forecast 🚀")
 # ---------- Header ----------
 st.markdown("<div class='big-title'>Stocker.AI 🔮</div>", unsafe_allow_html=True)
 st.caption("Yahoo Finance via yfinance — Not investment advice")
+if "ran_once" not in st.session_state:
+    st.session_state.ran_once = False
+
+if run:
+    st.session_state.ran_once = True
 
 # ---------- Stop early ----------
-if not run:
-    st.info("Select a ticker and click Analyze & Forecast")
+if not st.session_state.ran_once:
+    st.info("Select a ticker and click Analyze & Forecast to begin.")
     st.stop()
 
 # ---------- Load Data ----------
