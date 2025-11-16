@@ -217,7 +217,7 @@ if not analyze_pressed and st.session_state.active_tab == 0:
     # show tabs but keep default state
     tabs = st.tabs(["Overview", "Technical", "AI Forecast", "Signals", "News & Compare"])
     # ensure selected tab rendered visually
-    tabs[st.session_state.active_tab]
+    _ = tabs[st.session_state.active_tab]
     st.stop()
 
 # ---------------- Main data & models ----------------
