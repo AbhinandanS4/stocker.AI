@@ -429,11 +429,18 @@ elif st.session_state.active_tab == 2:
         st.session_state.chat_history = []
         render_chat_history()
         scroll_chat_to_bottom()
-    with st.form(key="chat_form", clear_on_submit=False):
+    with st.form(key="chat_form", clear_on_submit=True):
         user_input = st.text_input("Ask something about the stock, forecast, or market...", key="chat_input_field")
         send = st.form_submit_button("Send")
 
-
+    if "last_sent" not in st.session_state:
+        st.session_state.last_sent = ""
+    
+    if st.session_state.last_sent == user_input:
+        # Same input already processed → skip to avoid duplicates
+        pass
+    else:
+        st.session_state.last_sent = user_input
         # When user submits via form_submit_button
         if send and user_input and user_input.strip():
             # Ensure we stay on AI Forecast tab
