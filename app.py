@@ -359,16 +359,6 @@ if st.session_state.active_tab == 2:
             st.session_state.chat_history = []
             st.session_state.active_tab = 2
             time.sleep(0.05)
-    with c2:
-        if st.button("Inject context", key="inject_context"):
-            sys_msg = (
-                f"You are Stocker.AI — an assistant that explains market data, forecasts, "
-                f"and technical indicators. Current Ticker: {main_ticker}. "
-                f"Latest Price: {df['Close'].iloc[-1]:.2f}. RSI: {df['RSI'].iloc[-1]:.2f}. "
-                f"Trend: {regime_description(df)}. Do NOT provide financial advice."
-            )
-            st.session_state.chat_history.insert(0, {"role": "system", "content": sys_msg})
-            st.session_state.active_tab = 2
 
     user_input = st.text_input("Ask something about the stock, forecast, or market...", key="chat_input")
     send_pressed = st.button("Send", key="send_chat")
