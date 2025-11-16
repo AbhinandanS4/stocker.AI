@@ -414,152 +414,152 @@ elif st.session_state.active_tab == 2:
 
     # ---------------- Chat UI (bottom-fixed input, history above) ----------------
 # ---------------- Chat UI (bottom-fixed input, history above) ----------------
-st.subheader("💬 Ask Stocker.AI")
-
-# Chat shell container
-st.markdown('<div class="chat-shell">', unsafe_allow_html=True)
-
-# Chat history area
-st.markdown('<div class="chat-history" id="chat-history">', unsafe_allow_html=True)
-render_chat_history()
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Clear chat button (MUST be above form)
-if st.button("Clear chat"):
-    st.session_state.chat_history = []
-    st.session_state.last_sent = ""
+    st.subheader("💬 Ask Stocker.AI")
+    
+    # Chat shell container
+    st.markdown('<div class="chat-shell">', unsafe_allow_html=True)
+    
+    # Chat history area
+    st.markdown('<div class="chat-history" id="chat-history">', unsafe_allow_html=True)
     render_chat_history()
-    scroll_chat_to_bottom()
-
-# Chat input form
-with st.form(key="chat_form", clear_on_submit=True):
-    user_input = st.text_input(
-        "Ask something about the stock, forecast, or market...",
-        key="chat_input_field"
-    )
-    send = st.form_submit_button("Send")
-
-    # Handle send INSIDE THE FORM (prevents duplicates)
-    if send and user_input.strip():
-        st.session_state.active_tab = 2
-
-        # Initialize no-duplicate marker
-        if "last_sent" not in st.session_state:
-            st.session_state.last_sent = ""
-
-        # Prevent duplicate sends
-        if st.session_state.last_sent == user_input.strip():
-            scroll_chat_to_bottom()
-        else:
-            st.session_state.last_sent = user_input.strip()
-
-            # Build system context
-            system_prompt = (
-                f"You are Stocker.AI — an assistant that explains stock market data, "
-                f"technical indicators, price movements, volatility, and AI model forecasts. "
-                f"You must avoid giving financial advice. "
-                f"Current Ticker: {main_ticker}. "
-                f"Latest Close: {df['Close'].iloc[-1]:.2f}. "
-                f"RSI(14): {df['RSI'].iloc[-1]:.2f}. "
-                f"Regime: {regime_description(df)}."
-            )
-
-            # Ensure system message exists only once
-            if not st.session_state.chat_history or st.session_state.chat_history[0]["role"] != "system":
-                st.session_state.chat_history.insert(0, {"role": "system", "content": system_prompt})
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Clear chat button (MUST be above form)
+    if st.button("Clear chat"):
+        st.session_state.chat_history = []
+        st.session_state.last_sent = ""
+        render_chat_history()
+        scroll_chat_to_bottom()
+    
+    # Chat input form
+    with st.form(key="chat_form", clear_on_submit=True):
+        user_input = st.text_input(
+            "Ask something about the stock, forecast, or market...",
+            key="chat_input_field"
+        )
+        send = st.form_submit_button("Send")
+    
+        # Handle send INSIDE THE FORM (prevents duplicates)
+        if send and user_input.strip():
+            st.session_state.active_tab = 2
+    
+            # Initialize no-duplicate marker
+            if "last_sent" not in st.session_state:
+                st.session_state.last_sent = ""
+    
+            # Prevent duplicate sends
+            if st.session_state.last_sent == user_input.strip():
+                scroll_chat_to_bottom()
             else:
-                st.session_state.chat_history[0]["content"] = system_prompt
-
-            # Append user message
-            st.session_state.chat_history.append({"role": "user", "content": user_input})
-
-            render_chat_history()
-            scroll_chat_to_bottom()
-
-            # --- GROQ STREAMING ---
-            api_key = st.secrets.get("GROQ_API_KEY")
-            if not api_key:
-                st.error("Missing GROQ_API_KEY in Streamlit secrets.")
-            else:
-                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-                payload = {
-                    "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-                    "messages": st.session_state.chat_history,
-                    "stream": True
-                }
-
-                placeholder = st.empty()
-                full_reply = ""
-
-                try:
-                    with requests.post(
-                        "https://api.groq.com/openai/v1/chat/completions",
-                        json=payload, headers=headers, stream=True, timeout=60
-                    ) as resp:
-
-                        if resp.status_code != 200:
-                            try:
-                                err = resp.json()
-                            except:
-                                err = resp.text
-                            st.error(f"Groq API Error {resp.status_code}: {err}")
-
-                        else:
-                            for line in resp.iter_lines(decode_unicode=True):
-                                if not line or not line.startswith("data:"):
-                                    continue
-
-                                data = line[5:].strip()
-                                if data == "[DONE]":
-                                    break
-
-                                try:
-                                    j = json.loads(data)
-                                    token = j["choices"][0]["delta"].get("content", "")
-                                except:
-                                    token = ""
-
-                                if token:
-                                    full_reply += token
-                                    placeholder.markdown(
-                                        f"""
-                                        <div class="chat-row">
-                                            <div class="chat-bubble chat-bot">
-                                                <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                                                <div>{html.escape(full_reply).replace("\n", "<br>")}▌</div>
-                                            </div>
-                                        </div>
-                                        """,
-                                        unsafe_allow_html=True
-                                    )
-                                    scroll_chat_to_bottom()
-                                    time.sleep(0.02)
-
-                except Exception as e:
-                    st.error(f"Error: {e}")
-
-                # Final message
-                safe_final = html.escape(full_reply).replace("\n", "<br>")
-                placeholder.markdown(
-                    f"""
-                    <div class="chat-row">
-                        <div class="chat-bubble chat-bot">
-                            <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                            <div>{safe_final}</div>
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
+                st.session_state.last_sent = user_input.strip()
+    
+                # Build system context
+                system_prompt = (
+                    f"You are Stocker.AI — an assistant that explains stock market data, "
+                    f"technical indicators, price movements, volatility, and AI model forecasts. "
+                    f"You must avoid giving financial advice. "
+                    f"Current Ticker: {main_ticker}. "
+                    f"Latest Close: {df['Close'].iloc[-1]:.2f}. "
+                    f"RSI(14): {df['RSI'].iloc[-1]:.2f}. "
+                    f"Regime: {regime_description(df)}."
                 )
-
-                # Append once
-                st.session_state.chat_history.append({"role": "assistant", "content": full_reply})
-
+    
+                # Ensure system message exists only once
+                if not st.session_state.chat_history or st.session_state.chat_history[0]["role"] != "system":
+                    st.session_state.chat_history.insert(0, {"role": "system", "content": system_prompt})
+                else:
+                    st.session_state.chat_history[0]["content"] = system_prompt
+    
+                # Append user message
+                st.session_state.chat_history.append({"role": "user", "content": user_input})
+    
                 render_chat_history()
                 scroll_chat_to_bottom()
-
-# Close chat shell
-st.markdown('</div>', unsafe_allow_html=True)
+    
+                # --- GROQ STREAMING ---
+                api_key = st.secrets.get("GROQ_API_KEY")
+                if not api_key:
+                    st.error("Missing GROQ_API_KEY in Streamlit secrets.")
+                else:
+                    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                    payload = {
+                        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                        "messages": st.session_state.chat_history,
+                        "stream": True
+                    }
+    
+                    placeholder = st.empty()
+                    full_reply = ""
+    
+                    try:
+                        with requests.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            json=payload, headers=headers, stream=True, timeout=60
+                        ) as resp:
+    
+                            if resp.status_code != 200:
+                                try:
+                                    err = resp.json()
+                                except:
+                                    err = resp.text
+                                st.error(f"Groq API Error {resp.status_code}: {err}")
+    
+                            else:
+                                for line in resp.iter_lines(decode_unicode=True):
+                                    if not line or not line.startswith("data:"):
+                                        continue
+    
+                                    data = line[5:].strip()
+                                    if data == "[DONE]":
+                                        break
+    
+                                    try:
+                                        j = json.loads(data)
+                                        token = j["choices"][0]["delta"].get("content", "")
+                                    except:
+                                        token = ""
+    
+                                    if token:
+                                        full_reply += token
+                                        placeholder.markdown(
+                                            f"""
+                                            <div class="chat-row">
+                                                <div class="chat-bubble chat-bot">
+                                                    <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                                                    <div>{html.escape(full_reply).replace("\n", "<br>")}▌</div>
+                                                </div>
+                                            </div>
+                                            """,
+                                            unsafe_allow_html=True
+                                        )
+                                        scroll_chat_to_bottom()
+                                        time.sleep(0.02)
+    
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+    
+                    # Final message
+                    safe_final = html.escape(full_reply).replace("\n", "<br>")
+                    placeholder.markdown(
+                        f"""
+                        <div class="chat-row">
+                            <div class="chat-bubble chat-bot">
+                                <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                                <div>{safe_final}</div>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+    
+                    # Append once
+                    st.session_state.chat_history.append({"role": "assistant", "content": full_reply})
+    
+                    render_chat_history()
+                    scroll_chat_to_bottom()
+    
+    # Close chat shell
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 elif st.session_state.active_tab == 3:
