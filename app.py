@@ -8,12 +8,15 @@ from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import load_model
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import time
+import json
 
 # ---------- Page Configuration ----------
 st.set_page_config(page_title="Stocker.AI - Advanced Analysis", page_icon="🔮", layout="wide")
 
 st.markdown("""
 <style>
+/* --- theme / metrics --- */
 .big-title { font-size: 2.2rem; font-weight: 800; color: #7cc7ff; margin-bottom: 0.25rem; }
 .subtle { color:#9fb3c8; font-size:0.9rem; }
 .metric-box { border: 1px solid #2a7fff33; border-radius: 12px; padding: 10px; text-align: center; background: #0f1420; }
@@ -21,10 +24,23 @@ st.markdown("""
 .metric-value { font-size: 1.18em; font-weight: 700; color: #e8f0ff; }
 .ok { color:#22c55e; } .bad { color:#ef4444; } .warn { color:#f59e0b; }
 .pill { padding: 2px 8px; border-radius: 999px; background:#1f2937; color:#cbd5e1; font-size:0.8em; }
+
+/* --- chat bubbles --- */
+.chat-container { max-width: 900px; margin: 10px 0; }
+.chat-row { display:flex; width:100%; margin:6px 0; }
+.chat-bubble { padding:12px 14px; border-radius:14px; max-width:78%; line-height:1.35; font-size:0.95rem; box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+.chat-user { margin-left:auto; background: linear-gradient(180deg,#0ea5b1,#0284c7); color: white; border-bottom-right-radius: 4px; }
+.chat-bot { margin-right:auto; background: linear-gradient(180deg,#111827,#0f1724); color: #e6eef8; border-bottom-left-radius: 4px; border: 1px solid rgba(255,255,255,0.03); }
+.small { font-size:0.82rem; color:#9fb3c8; margin-top:6px; }
+.typing { font-style: italic; opacity:0.9; }
+.clear-btn { background:#2b6ef6; color:white; padding:6px 10px; border-radius:8px; border:none; }
+
+/* ensure markdown doesn't introduce odd gaps */
+.streamlit-expanderHeader { padding: 0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- Helpers ----------
+# ------------------ Helpers ------------------
 def safe_num(x, default=np.nan):
     try:
         return float(x)
@@ -32,7 +48,7 @@ def safe_num(x, default=np.nan):
         return default
 
 def inr_str(x):
-    if x is None or np.isnan(x):
+    if x is None or (isinstance(x, float) and np.isnan(x)):
         return "N/A"
     return f"₹{x:,.2f}"
 
@@ -42,19 +58,15 @@ def pct_str(x):
     return f"{x*100:.2f}%"
 
 def normalize_nse(ticker: str) -> str:
-    # Keep original behavior but sanitize
     t = ticker.strip().upper()
     return t
 
-# ---------- Data fetch with yfinance ----------
 @st.cache_data(ttl=600, show_spinner=False)
 def get_stock_data(ticker, period):
     t = yf.Ticker(ticker)
-    # History
     data = t.history(period=period, auto_adjust=True)
     if data is None or data.empty:
         return None, {}
-    # Try fast_info first, then info, but guard each field
     info = {}
     try:
         fi = t.fast_info or {}
@@ -67,17 +79,14 @@ def get_stock_data(ticker, period):
         })
     except Exception:
         pass
-    # .info can be brittle; request only a few keys safely
     try:
         inf = t.info or {}
         for k in ["longName", "trailingPE", "trailingEps", "dividendYield", "longBusinessSummary", "sector", "industry"]:
             if k in inf:
                 info[k] = inf.get(k, None)
-        # Some markets store cap here reliably
         if not info.get("marketCap") and "marketCap" in inf:
             info["marketCap"] = inf.get("marketCap")
     except Exception:
-        # If info fails entirely, keep partial
         pass
     return data, info
 
@@ -94,13 +103,11 @@ def compute_indicators(data: pd.DataFrame):
     exp2 = df["Close"].ewm(span=26, adjust=False).mean()
     df["MACD"] = exp1 - exp2
     df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
-    # Volatility & Bands
     df["ATR"] = (df["High"] - df["Low"]).rolling(14).mean()
     df["BB_Mid"] = df["Close"].rolling(20).mean()
     df["BB_Std"] = df["Close"].rolling(20).std()
     df["BB_Upper"] = df["BB_Mid"] + 2*df["BB_Std"]
     df["BB_Lower"] = df["BB_Mid"] - 2*df["BB_Std"]
-    # ADX approximation
     tr = np.maximum(df["High"]-df["Low"], np.maximum((df["High"]-df["Close"].shift()).abs(), (df["Low"]-df["Close"].shift()).abs()))
     plus_dm = (df["High"]-df["High"].shift()).clip(lower=0)
     minus_dm = (df["Low"].shift()-df["Low"]).clip(lower=0)
@@ -119,7 +126,6 @@ def regime_description(df):
     parts.append("Trending (ADX≥25)" if df["ADX"].iloc[-1] >= 25 else "Range-bound (ADX<25)")
     return ", ".join(parts)
 
-# ---------- AI model ----------
 @st.cache_resource
 def load_models():
     try:
@@ -157,7 +163,6 @@ def forecast_future_prices(_model, data, scaler, n_days=3):
     future_predictions = scaler.inverse_transform(np.array(future_predictions))
     return future_predictions.flatten()
 
-# ---------- News (kept) ----------
 @st.cache_data(ttl=1800)
 def fetch_news():
     url = "https://www.moneycontrol.com/news/business/stocks/"
@@ -246,7 +251,6 @@ with tab1:
     if info.get("sector") or info.get("industry"):
         st.caption(f"Sector: {info.get('sector','N/A')} • Industry: {info.get('industry','N/A')}")
 
-    # Price + MAs + BB + Volume
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
     fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name='Price'), row=1, col=1)
     if ma_50: fig.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], name='SMA 50', line=dict(color='orange')), row=1, col=1)
@@ -258,7 +262,6 @@ with tab1:
     fig.update_yaxes(title_text="Price", row=1, col=1); fig.update_yaxes(title_text="Volume", row=2, col=1)
     st.plotly_chart(fig, use_container_width=True)
 
-    # Corporate actions (dividends & splits quick view)
     ca1, ca2 = st.columns(2)
     try:
         div = yf.Ticker(main_ticker).dividends
@@ -308,7 +311,7 @@ with tab2:
     with r2:
         st.markdown(f'<div class="metric-box"><div class="metric-label">Regime</div><div class="metric-value">{regime_description(df)}</div></div>', unsafe_allow_html=True)
 
-# AI Forecast
+# AI Forecast + Chatbot
 with tab3:
     st.header("🔮 AI Price Forecast")
     if not prediction_model:
@@ -320,7 +323,6 @@ with tab3:
 
         st.warning("Forecasts are speculative and based on iterative predictions. Consider recent volatility and model drift.", icon="⚠️")
 
-        # Confidence from residuals
         band = np.nan
         if len(hist_predictions) > 20:
             true = df["Close"].iloc[-len(hist_predictions):].values
@@ -329,7 +331,6 @@ with tab3:
             if len(resid):
                 band = float(np.nanstd(resid))
 
-        # Metrics tiles for future days
         if future_forecast.size:
             fc_cols = st.columns(min(5, forecast_days))
             future_dates = pd.bdate_range(start=df.index[-1] + pd.Timedelta(days=1), periods=forecast_days)
@@ -339,7 +340,6 @@ with tab3:
                     with fc_cols[i]:
                         st.metric(label=f"Day {i+1} ({date.strftime('%b %d')})", value=f"₹{price:.2f}{band_txt}")
 
-        # Plot
         fig_pred = go.Figure()
         fig_pred.add_trace(go.Scatter(x=df.index, y=df['Close'], name='Actual Price', line=dict(color='deepskyblue')))
         if len(hist_predictions):
@@ -357,6 +357,155 @@ with tab3:
                 fig_pred.add_trace(go.Scatter(x=fdates, y=future_forecast-2*band, name='Forecast -2σ', line=dict(color='rgba(255,255,0,0.3)', dash='dot'), fill="tonexty", fillcolor="rgba(255,255,0,0.12)"))
         fig_pred.update_layout(title="Model Performance and Forecast", template='plotly_dark', legend_title="Legend")
         st.plotly_chart(fig_pred, use_container_width=True)
+
+    # ------------------ CHATBOT INTERFACE (Grok API) ------------------
+    st.subheader("💬 Ask Stocker.AI (Chatbot Powered by Grok)")
+
+    # Chat controls
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    if "chat_placeholder" not in st.session_state:
+        st.session_state.chat_placeholder = None
+
+    # top row: clear chat + quick context button
+    c1, c2, c3 = st.columns([1,1,6])
+    with c1:
+        if st.button("Clear chat"):
+            st.session_state.chat_history = []
+            # tiny delay to let UI clear
+            time.sleep(0.08)
+    with c2:
+        if st.button("Inject context"):
+            sys_msg = (
+                f"You are Stocker.AI — an assistant that explains market data, forecasts, "
+                f"and technical indicators. Current Ticker: {main_ticker}. "
+                f"Latest Price: {df['Close'].iloc[-1]:.2f}. RSI: {df['RSI'].iloc[-1]:.2f}. "
+                f"Trend: {regime_description(df)}. Do NOT provide financial advice."
+            )
+            st.session_state.chat_history.insert(0, {"role": "system", "content": sys_msg})
+
+    # chat input area
+    user_query = st.text_input("Ask something about the stock, forecast, or market...", key="chat_input")
+    send_pressed = st.button("Send", key="send_button")
+
+    def render_chat():
+        # container for chat bubbles
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+        for msg in st.session_state.chat_history:
+            if msg["role"] == "user":
+                st.markdown(f'''
+                <div class="chat-row">
+                  <div class="chat-bubble chat-user">{st.session_state.get('user_name','You') if False else "You"}<div style="font-weight:600;margin-top:6px">{msg['content']}</div></div>
+                </div>
+                ''', unsafe_allow_html=True)
+            elif msg["role"] == "assistant":
+                st.markdown(f'''
+                <div class="chat-row">
+                  <div class="chat-bubble chat-bot">
+                    <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                    <div>{msg['content']}</div>
+                  </div>
+                </div>
+                ''', unsafe_allow_html=True)
+            elif msg["role"] == "system":
+                st.markdown(f'<div class="small">System: {msg["content"][:200]}{"..." if len(msg["content"])>200 else ""}</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    render_chat()
+
+    # handle send
+    if send_pressed and user_query.strip():
+        # append user message
+        st.session_state.chat_history.append({"role": "user", "content": user_query})
+        render_chat()
+
+        api_key = st.secrets.get("GROK_API_KEY", None)
+        if not api_key:
+            st.error("GROK API key not found in st.secrets['GROK_API_KEY']. Add it to Streamlit secrets.")
+        else:
+            headers = {"Authorization": f"Bearer {api_key}", "Accept": "text/event-stream", "Content-Type": "application/json"}
+            payload = {
+                "model": "grok-beta",
+                "messages": st.session_state.chat_history,
+                "stream": True
+            }
+            # placeholder element to animate typing
+            placeholder = st.empty()
+            st.session_state.chat_placeholder = placeholder
+            full_reply = ""
+            try:
+                with requests.post("https://api.x.ai/v1/chat/completions", json=payload, headers=headers, stream=True, timeout=60) as resp:
+                    if resp.status_code != 200:
+                        try:
+                            err = resp.json()
+                        except Exception:
+                            err = resp.text
+                        st.error(f"Grok API returned {resp.status_code}: {err}")
+                    else:
+                        # iterate chunks
+                        for raw in resp.iter_lines(decode_unicode=True):
+                            if raw is None or raw == "":
+                                continue
+                            line = raw.strip()
+                            # many streaming APIs prefix "data: "
+                            if line.startswith("data:"):
+                                line = line[len("data:"):].strip()
+                            if not line:
+                                continue
+                            # some implementations send "[DONE]" or similar
+                            if line in ("[DONE]", "--end--"):
+                                break
+                            # try to parse json chunk
+                            token = None
+                            try:
+                                j = json.loads(line)
+                                # Try multiple possible shapes:
+                                # 1) {"choices":[{"delta":{"content":"..."} }]}
+                                choices = j.get("choices") or []
+                                if choices:
+                                    delta = choices[0].get("delta") or {}
+                                    token = delta.get("content")
+                                    # try assistant full message if provided
+                                    if token is None:
+                                        msg_block = choices[0].get("message") or {}
+                                        token = msg_block.get("content")
+                                # 2) sometimes top-level has 'message' with 'content'
+                                if token is None and "message" in j:
+                                    token = j["message"].get("content")
+                            except Exception:
+                                # fallback: if line looks like plain text, append it
+                                token = line
+
+                            if token:
+                                # append token to full reply and show typing cursor
+                                full_reply += token
+                                # render placeholder bubble with typing cursor
+                                placeholder.markdown(f'''
+                                    <div class="chat-row">
+                                      <div class="chat-bubble chat-bot typing">
+                                        <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                                        <div>{full_reply}▌</div>
+                                      </div>
+                                    </div>
+                                ''', unsafe_allow_html=True)
+                                # small sleep to make animation visible (keeps responsive)
+                                time.sleep(0.03)
+                        # done streaming - write final
+                        placeholder.markdown(f'''
+                            <div class="chat-row">
+                              <div class="chat-bubble chat-bot">
+                                <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                                <div>{full_reply}</div>
+                              </div>
+                            </div>
+                        ''', unsafe_allow_html=True)
+                        # append assistant reply to history
+                        st.session_state.chat_history.append({"role": "assistant", "content": full_reply})
+            except requests.exceptions.RequestException as e:
+                st.error(f"Grok API request failed: {e}")
+
+    # final render to ensure history shows the fresh assistant response
+    render_chat()
 
 # Signals
 with tab4:
@@ -386,7 +535,6 @@ with tab4:
     fig_eq.update_layout(template="plotly_dark", height=300, title="Strategy Equity (MACD cross long-only)")
     st.plotly_chart(fig_eq, use_container_width=True)
 
-    # Calendar heatmap (monthly returns)
     m = df["Close"].resample("M").last().pct_change()
     cal = pd.DataFrame({"Year": m.index.year, "Month": m.index.month, "Return": m.values})
     pivot = cal.pivot_table(index="Year", columns="Month", values="Return", aggfunc="mean").fillna(0)
@@ -413,7 +561,6 @@ with tab5:
     else:
         st.warning("Could not fetch latest news.")
 
-    # Simple comparison
     if compare:
         comp_list = [normalize_nse(x.strip()) for x in compare.split(",") if x.strip()]
         if comp_list:
@@ -433,9 +580,9 @@ with tab5:
                 fig_cmp = go.Figure()
                 for col in cmp_df.columns:
                     fig_cmp.add_trace(go.Scatter(x=cmp_df.index, y=cmp_df[col], name=col))
-                fig_cmp.update_layout(template="plotly_dark", height=380, title="Normalized Performance")
+                fig_cmp.update_layout(template='plotly_dark', height=380, title="Normalized Performance")
                 st.plotly_chart(fig_cmp, use_container_width=True)
 
 # Footer
 st.markdown("---")
-st.caption("🚀 Powered by Stocker.AI | Data from Yahoo Finance via yfinance | Built with Streamlit")  
+st.caption("🚀 Powered by Stocker.AI | Data from Yahoo Finance via yfinance | Built with Streamlit")
