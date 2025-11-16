@@ -238,6 +238,9 @@ if data is None:
     st.stop()
 
 df = compute_indicators(data)
+st.session_state.current_ticker = main_ticker
+st.session_state.current_df = df
+st.session_state.current_info = info
 
 
 # ---------- Tabs ----------
@@ -613,13 +616,18 @@ with tab6:
         })
 
         # Prepare system context
+        ctx_ticker = st.session_state.current_ticker
+        ctx_df = st.session_state.current_df
+        
         system_prompt = (
-            f"You are Stocker.AI, a safe stock-market explainer model. "
-            f"You DO NOT provide financial advice. You only explain stocks, indicators, volatility, AI forecasts, "
-            f"and market dynamics. Stay educational. Current ticker: {main_ticker}. "
-            f"Latest price: {df['Close'].iloc[-1]:.2f}. RSI: {df['RSI'].iloc[-1]:.2f}. "
-            f"Market regime: {regime_description(df)}."
+            f"You are Stocker.AI, a safe educational stock-market assistant.\n"
+            f"Ticker: {ctx_ticker}\n"
+            f"Latest Price: {ctx_df['Close'].iloc[-1]:.2f}\n"
+            f"RSI(14): {ctx_df['RSI'].iloc[-1]:.2f}\n"
+            f"Regime: {regime_description(ctx_df)}\n"
+            f"Explain only. NEVER give financial advice.\n"
         )
+
 
         messages = [
             {"role": "system", "content": system_prompt},
