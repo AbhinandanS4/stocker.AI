@@ -1,4 +1,3 @@
-# stocker_ai_app.py
 import streamlit as st
 import yfinance as yf
 import numpy as np
@@ -19,12 +18,9 @@ st.set_page_config(page_title="Stocker.AI - Advanced Analysis", page_icon="🔮"
 st.markdown("""
 <style>
 .big-title { font-size: 2.2rem; font-weight: 800; color: #7cc7ff; margin-bottom: 0.25rem; }
-.subtle { color:#9fb3c8; font-size:0.9rem; }
 .metric-box { border: 1px solid #2a7fff33; border-radius: 12px; padding: 10px; text-align: center; background: #0f1420; }
 .metric-label { font-size: 0.78em; color: #c6d0e0; }
 .metric-value { font-size: 1.18em; font-weight: 700; color: #e8f0ff; }
-.ok { color:#22c55e; } .bad { color:#ef4444; } .warn { color:#f59e0b; }
-.pill { padding: 2px 8px; border-radius: 999px; background:#1f2937; color:#cbd5e1; font-size:0.8em; }
 
 /* chat bubbles */
 .chat-container { max-width: 100%; margin: 10px 0; }
@@ -34,13 +30,10 @@ st.markdown("""
 .chat-bot { margin-right:auto; background: linear-gradient(180deg,#111827,#0f1724); color: #e6eef8; border-bottom-left-radius: 4px; border: 1px solid rgba(255,255,255,0.03); }
 .small { font-size:0.82rem; color:#9fb3c8; margin-top:6px; }
 .typing { font-style: italic; opacity:0.95; }
-.clear-btn { background:#2b6ef6; color:white; padding:6px 10px; border-radius:8px; border:none; }
-
-/* make text inputs full width in columns */
-.stTextInput>div>div>input { width: 100% !important; }
+.tab-btn { background: transparent; color: #cbd5e1; padding:8px 12px; border-radius:8px; margin-right:6px; border: none; }
+.tab-btn-active { background: #1f2937; color: #fff; padding:8px 12px; border-radius:8px; margin-right:6px; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
 </style>
 """, unsafe_allow_html=True)
-
 
 # ---------------- Helpers ----------------
 def safe_num(x, default=np.nan):
@@ -199,25 +192,31 @@ analyze_pressed = st.sidebar.button("Analyze & Forecast 🚀", key="analyze_btn"
 
 # ---------------- Active tab memory ----------------
 if "active_tab" not in st.session_state:
-    # default to Overview (0)
-    st.session_state.active_tab = 0
+    st.session_state.active_tab = 2 if analyze_pressed else 0
 
-# If user clicked Analyze, move to AI Forecast tab (index 2)
 if analyze_pressed:
-    st.session_state.active_tab = 2  # AI Forecast
+    # choose AI Forecast (tab index 2) when analyze clicked — per your preference
+    st.session_state.active_tab = 2
 
-# ---------------- Header ----------------
+# ---------------- Header + custom tab bar ----------------
 st.markdown('<div class="big-title">Stocker.AI 🔮</div>', unsafe_allow_html=True)
 st.caption("Yahoo Finance data via yfinance • This is not investment advice")
 
-# ---------------- Early exit ----------------
-# We will still require Analyze pressed to load heavy stuff
-if not analyze_pressed and st.session_state.active_tab == 0:
+# Custom tab buttons (avoids any DeltaGenerator leak)
+tab_labels = ["Overview", "Technical", "AI Forecast", "Signals", "News & Compare"]
+cols = st.columns(len(tab_labels))
+for i, label in enumerate(tab_labels):
+    btn_key = f"tab_{i}_btn"
+    if i == st.session_state.active_tab:
+        if cols[i].button(label, key=btn_key, help=label):
+            st.session_state.active_tab = i
+    else:
+        if cols[i].button(label, key=btn_key):
+            st.session_state.active_tab = i
+
+# stop early if user hasn't analyzed and is on default
+if st.session_state.active_tab == 0 and not analyze_pressed:
     st.info("Select a ticker and click Analyze & Forecast to begin.")
-    # show tabs but keep default state
-    tabs = st.tabs(["Overview", "Technical", "AI Forecast", "Signals", "News & Compare"])
-    # ensure selected tab rendered visually
-    _ = tabs[st.session_state.active_tab]
     st.stop()
 
 # ---------------- Main data & models ----------------
@@ -233,16 +232,10 @@ if data is None:
 
 df = compute_indicators(data)
 
-# ---------------- Tabs creation ----------------
-tabs = st.tabs(["Overview", "Technical", "AI Forecast", "Signals", "News & Compare"])
-tab1, tab2, tab3, tab4, tab5 = tabs
+# ---------------- Render tabs conditionally ----------------
 
-# Ensure the active tab is selected after rerun
-# This line focuses the chosen tab visually
-tabs[st.session_state.active_tab]
-
-# ---------------- Tab 1: Overview ----------------
-with tab1:
+# ---------- Overview (index 0) ----------
+if st.session_state.active_tab == 0:
     st.header(f"📍 Overview for {info.get('longName', main_ticker)}")
     cols = st.columns(6)
     last_close = df["Close"].iloc[-1]
@@ -275,26 +268,8 @@ with tab1:
     fig.update_yaxes(title_text="Price", row=1, col=1); fig.update_yaxes(title_text="Volume", row=2, col=1)
     st.plotly_chart(fig, use_container_width=True)
 
-    ca1, ca2 = st.columns(2)
-    try:
-        div = yf.Ticker(main_ticker).dividends
-        if div is not None and not div.empty:
-            div_recent = div.tail(5)
-            ca1.subheader("Dividends")
-            ca1.dataframe(div_recent.rename("Dividend").to_frame())
-    except Exception:
-        pass
-    try:
-        spl = yf.Ticker(main_ticker).splits
-        if spl is not None and not spl.empty:
-            spl_recent = spl.tail(5)
-            ca2.subheader("Splits")
-            ca2.dataframe(spl_recent.rename("Split Ratio").to_frame())
-    except Exception:
-        pass
-
-# ---------------- Tab 2: Technical ----------------
-with tab2:
+# ---------- Technical (index 1) ----------
+if st.session_state.active_tab == 1:
     st.header("⚙️ Technical Indicators")
     c1, c2 = st.columns(2)
     with c1:
@@ -324,8 +299,8 @@ with tab2:
     with r2:
         st.markdown(f'<div class="metric-box"><div class="metric-label">Regime</div><div class="metric-value">{regime_description(df)}</div></div>', unsafe_allow_html=True)
 
-# ---------------- Tab 3: AI Forecast + Chatbot ----------------
-with tab3:
+# ---------- AI Forecast + Chatbot (index 2) ----------
+if st.session_state.active_tab == 2:
     st.header("🔮 AI Price Forecast")
 
     if not prediction_model:
@@ -373,18 +348,15 @@ with tab3:
         st.plotly_chart(fig_pred, use_container_width=True)
 
     # ---------------- Chatbot UI ----------------
-    st.subheader("💬 Ask Stocker.AI (Chatbot Powered by Grok)")
+    st.subheader("💬 Ask Stocker.AI (Chatbot Powered by Groq)")
 
-    # initialize chat history
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    # top actions
     c1, c2, c3 = st.columns([1,1,6])
     with c1:
         if st.button("Clear chat", key="clear_chat"):
             st.session_state.chat_history = []
-            # stay on AI Forecast tab
             st.session_state.active_tab = 2
             time.sleep(0.05)
     with c2:
@@ -395,15 +367,12 @@ with tab3:
                 f"Latest Price: {df['Close'].iloc[-1]:.2f}. RSI: {df['RSI'].iloc[-1]:.2f}. "
                 f"Trend: {regime_description(df)}. Do NOT provide financial advice."
             )
-            # Prepend system message
             st.session_state.chat_history.insert(0, {"role": "system", "content": sys_msg})
             st.session_state.active_tab = 2
 
-    # input and send
     user_input = st.text_input("Ask something about the stock, forecast, or market...", key="chat_input")
     send_pressed = st.button("Send", key="send_chat")
 
-    # rendering chat bubbles
     def render_chat():
         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
         for msg in st.session_state.chat_history:
@@ -427,111 +396,92 @@ with tab3:
                   </div>
                 </div>
                 ''', unsafe_allow_html=True)
-            else:  # system
+            else:
                 st.markdown(f'<div class="small">System: {content[:300]}{"..." if len(content)>300 else ""}</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # show existing history
     render_chat()
 
-   # handle sending
-if send_pressed and user_input.strip():
-    # stay on AI Forecast tab
-    st.session_state.active_tab = 2
+    # send handling (Groq SSE style)
+    if send_pressed and user_input.strip():
+        st.session_state.active_tab = 2
+        st.session_state.chat_history.append({"role": "user", "content": user_input})
+        render_chat()
 
-    # append user's message
-    st.session_state.chat_history.append({"role": "user", "content": user_input})
+        api_key = st.secrets.get("GROQ_API_KEY", None)
+        if not api_key:
+            st.error("GROQ API key missing in st.secrets['GROQ_API_KEY']")
+        else:
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                "messages": st.session_state.chat_history,
+                "stream": True
+            }
+
+            placeholder = st.empty()
+            full_reply = ""
+
+            try:
+                with requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, stream=True, timeout=60) as resp:
+                    if resp.status_code != 200:
+                        try:
+                            err = resp.json()
+                        except Exception:
+                            err = resp.text
+                        st.error(f"Groq API returned {resp.status_code}: {err}")
+                    else:
+                        for raw in resp.iter_lines(decode_unicode=True):
+                            if raw is None or raw == "":
+                                continue
+                            line = raw.strip()
+                            if line.startswith("data:"):
+                                data = line[len("data:"):].strip()
+                                if data == "[DONE]":
+                                    break
+                                try:
+                                    j = json.loads(data)
+                                    choices = j.get("choices") or []
+                                    token = ""
+                                    if choices:
+                                        delta = choices[0].get("delta", {}) or {}
+                                        token = delta.get("content", "") or ""
+                                        if token == "":
+                                            # sometimes full message provided
+                                            msg_block = choices[0].get("message") or {}
+                                            token = msg_block.get("content", "") or ""
+                                except Exception:
+                                    token = data
+
+                                if token:
+                                    full_reply += token
+                                    placeholder.markdown(f'''
+                                        <div class="chat-row">
+                                          <div class="chat-bubble chat-bot typing">
+                                            <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                                            <div>{full_reply}▌</div>
+                                          </div>
+                                        </div>
+                                    ''', unsafe_allow_html=True)
+                                    time.sleep(0.02)
+
+                        # finalize
+                        placeholder.markdown(f'''
+                            <div class="chat-row">
+                              <div class="chat-bubble chat-bot">
+                                <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
+                                <div>{full_reply}</div>
+                              </div>
+                            </div>
+                        ''', unsafe_allow_html=True)
+                        st.session_state.chat_history.append({"role": "assistant", "content": full_reply})
+            except requests.exceptions.RequestException as e:
+                st.error(f"Groq API request failed: {e}")
+
     render_chat()
 
-    api_key = st.secrets.get("GROQ_API_KEY", None)
-    if not api_key:
-        st.error("GROQ API key missing in st.secrets['GROQ_API_KEY']")
-    else:
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-            "messages": st.session_state.chat_history,
-            "stream": True
-        }
-
-        placeholder = st.empty()
-        full_reply = ""
-
-        try:
-            with requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                json=payload,
-                headers=headers,
-                stream=True,
-                timeout=60
-            ) as resp:
-
-                if resp.status_code != 200:
-                    try:
-                        err = resp.json()
-                    except:
-                        err = resp.text
-                    st.error(f"Groq API Error {resp.status_code}: {err}")
-                else:
-                    # Process streaming tokens (OpenAI/Groq SSE format)
-                    for line in resp.iter_lines(decode_unicode=True):
-                        if not line:
-                            continue
-
-                        if line.startswith("data:"):
-                            data = line[len("data:"):].strip()
-                            if data == "[DONE]":
-                                break
-
-                            try:
-                                j = json.loads(data)
-                                token = j["choices"][0]["delta"].get("content", "")
-                            except:
-                                token = ""
-
-                            if token:
-                                full_reply += token
-                                placeholder.markdown(f"""
-                                    <div class="chat-row">
-                                      <div class="chat-bubble chat-bot typing">
-                                        <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                                        <div>{full_reply}▌</div>
-                                      </div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-
-                                time.sleep(0.02)
-
-                    # Final message
-                    placeholder.markdown(f"""
-                        <div class="chat-row">
-                          <div class="chat-bubble chat-bot">
-                            <div style="font-weight:600;margin-bottom:6px">Stocker.AI</div>
-                            <div>{full_reply}</div>
-                          </div>
-                        </div>
-                    """, unsafe_allow_html=True)
-
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": full_reply
-                    })
-
-        except Exception as e:
-            st.error(f"Groq request failed: {e}")
-
-    # Render final chat history
-    render_chat()
-
-    # final render so history appears after streaming completes
-    render_chat()
-
-# ---------------- Tab 4: Signals ----------------
-with tab4:
+# ---------- Signals (index 3) ----------
+if st.session_state.active_tab == 3:
     st.header("📈 Simple Signals & Stats")
     s = df.copy()
     s["Signal"] = 0
@@ -558,17 +508,8 @@ with tab4:
     fig_eq.update_layout(template="plotly_dark", height=300, title="Strategy Equity (MACD cross long-only)")
     st.plotly_chart(fig_eq, use_container_width=True)
 
-    m = df["Close"].resample("M").last().pct_change()
-    cal = pd.DataFrame({"Year": m.index.year, "Month": m.index.month, "Return": m.values})
-    pivot = cal.pivot_table(index="Year", columns="Month", values="Return", aggfunc="mean").fillna(0)
-    heat = go.Figure(data=go.Heatmap(
-        z=pivot.values, x=[str(c) for c in pivot.columns], y=pivot.index.astype(str),
-        colorscale="RdYlGn", zmin=-0.15, zmax=0.15, hoverongaps=False))
-    heat.update_layout(template="plotly_dark", title="Monthly Return Heatmap", height=360)
-    st.plotly_chart(heat, use_container_width=True)
-
-# ---------------- Tab 5: News & Compare ----------------
-with tab5:
+# ---------- News & Compare (index 4) ----------
+if st.session_state.active_tab == 4:
     st.header("📰 News & Compare")
     news_list = fetch_news()
     st.subheader("Sentiment Snapshot")
