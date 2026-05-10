@@ -485,7 +485,7 @@ with tab4:
     st.plotly_chart(fig_eq, use_container_width=True)
 
     # Monthly heatmap
-    m = df["Close"].resample("M").last().pct_change()
+    m = df["Close"].resample("ME").last().pct_change()
     cal = pd.DataFrame({"Year": m.index.year, "Month": m.index.month, "Return": m.values})
     pivot = cal.pivot_table(index="Year", columns="Month", values="Return", aggfunc="mean").fillna(0)
 
